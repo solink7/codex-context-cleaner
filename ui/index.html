@@ -1,0 +1,63 @@
+<!doctype html>
+<!--
+[INPUT]: settings.css 的灰阶视觉与 settings.js 的本机控制接口。
+[OUTPUT]: 上游地址、端口和高级设置表单，以及代理状态和客户端地址。
+[POS]: 独立于代理端口的设置入口；不收集 API Key。
+[PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+-->
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>代理设置 · Codex Context Cleaner</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/settings.css">
+  <script src="/settings.js" defer></script>
+</head>
+<body>
+  <main class="workspace">
+    <header class="page-header">
+      <div class="wordmark"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m8 5-5 7 5 7M16 5l5 7-5 7M14 4l-4 16"/></svg><span>Context Cleaner</span></div>
+    </header>
+    <section class="settings-panel" aria-labelledby="page-title">
+      <div class="panel-heading">
+        <div><h1 id="page-title">代理设置</h1><p class="description">连接你的 API 服务，让上下文切换更顺畅。</p></div>
+        <div class="status" id="status" role="status"><span class="status-dot"></span><span id="status-label">正在连接</span></div>
+      </div>
+      <form id="settings-form">
+        <div class="fields">
+          <div class="field">
+            <label for="upstream">上游 API 地址</label>
+            <input id="upstream" name="upstream_base_url" type="url" placeholder="https://你的服务地址/v1" autocomplete="off" spellcheck="false" required aria-describedby="upstream-hint">
+            <p class="hint" id="upstream-hint">填写你原来使用的 API 地址，API Key 仍由客户端提供。</p>
+          </div>
+          <div class="field port-field">
+            <label for="port">本机端口</label>
+            <input id="port" name="port" type="number" min="1" max="65535" step="1" inputmode="numeric" required aria-describedby="port-hint">
+            <p class="hint" id="port-hint">默认 8787；如被占用，可换一个端口。</p>
+          </div>
+        </div>
+        <details class="advanced" id="advanced">
+          <summary>高级设置<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="m6 4 4 4-4 4"/></svg></summary>
+          <div class="advanced-content">
+            <div class="field timeout-field"><label for="timeout">等待超时 <span>秒</span></label><input id="timeout" name="timeout_seconds" type="number" min="0.1" step="any" required><p class="hint">通常保持 600 秒即可。</p></div>
+            <label class="checkbox-row" for="full-history"><input id="full-history" name="assume_full_history" type="checkbox"><span><strong>允许移除历史响应 ID</strong><span class="hint">仅在确认客户端每次发送完整聊天历史时开启。</span></span></label>
+          </div>
+        </details>
+        <div class="form-footer">
+          <span id="save-note" class="hint">设置只保存在这台电脑上。</span>
+          <button class="button primary" id="save" type="submit"><span class="spinner" aria-hidden="true"></span><span id="save-label">保存设置</span></button>
+        </div>
+      </form>
+      <div class="connection-section">
+        <div class="section-heading"><h2>客户端连接</h2><button type="button" class="button secondary" id="toggle" disabled>启动代理<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="m6 3 6 5-6 5Z"/></svg></button></div>
+        <div class="address-row"><code id="client-url">http://127.0.0.1:8787/v1</code><button class="copy-button" id="copy" type="button" aria-label="复制客户端 API 地址"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="7" y="7" width="9" height="10" rx="2"/><path d="M12 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/></svg><span id="copy-label">复制</span></button></div>
+        <p class="hint connection-hint">在客户端选择 Responses 协议，填入上方地址与原来的 API Key。</p>
+      </div>
+      <div class="feedback" id="feedback" role="status" aria-live="polite" hidden></div>
+    </section>
+    <noscript><p class="feedback">请启用 JavaScript 后重新打开设置页。</p></noscript>
+  </main>
+</body>
+</html>

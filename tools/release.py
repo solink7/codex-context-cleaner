@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-[INPUT]: README.md、默认配置、固定运行环境清单与平台入口。
+[INPUT]: README.md、默认配置、设置页、固定运行环境清单与平台入口。
 [OUTPUT]: dist/ 内独立的 macOS 与 Windows 发布压缩包。
 [POS]: 纯构建入口；只写 dist/，不修改源码或读取本地私有配置。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
@@ -23,7 +23,7 @@ if __package__ in (None, ''):
 from tools.docs import render_readme
 from sanitizer import load_config
 IGNORED = {'__pycache__', '.DS_Store', '.runtime', 'CLAUDE.md', 'AGENTS.md'}
-WINDOWS_SCRIPTS = ('start.ps1', 'stop.ps1', 'control.ps1', 'runtime.ps1')
+WINDOWS_SCRIPTS = ('start.ps1', 'stop.ps1', 'settings.ps1', 'control.ps1', 'runtime.ps1')
 PACKAGE_NAME = 'codex-context-cleaner'
 
 
@@ -60,9 +60,16 @@ def build_mac(folder, guide, config):
     (app / 'MacOS' / 'runtime.sh').write_bytes((source / 'runtime.sh').read_bytes())
     for name in ('runtime-manifest.tsv', 'sanitizer.py'):
         (app / 'Resources' / name).write_bytes((ROOT / name).read_bytes())
+    for name in ('settings.py', 'control.py'):
+        (app / 'Resources' / name).write_bytes((ROOT / name).read_bytes())
+    shutil.copytree(ROOT / 'ui', app / 'Resources' / 'ui', ignore=shutil.ignore_patterns(*IGNORED))
     (app / 'Resources' / 'config.json').write_bytes(config)
     for name in ('status-ui.sh', 'progress.js'):
         (stop / name).write_bytes((app / 'MacOS' / name).read_bytes())
+    settings = folder / '设置代理.app' / 'Contents'
+    (settings / 'MacOS').mkdir(parents=True)
+    (settings / 'Info.plist').write_bytes((source / 'settings.plist').read_bytes())
+    (settings / 'MacOS' / 'launcher').write_bytes((source / 'settings.sh').read_bytes())
     return {'config.json': '启动代理.app/Contents/Resources/config.json'}
 
 
@@ -71,12 +78,13 @@ def build_windows(folder, guide, config):
     scripts.mkdir(parents=True)
     (folder / 'README.html').write_text(guide, encoding='utf-8')
     (folder / 'config.json').write_bytes(config)
-    for name in ('sanitizer.py', 'runtime-manifest.tsv'):
+    for name in ('sanitizer.py', 'settings.py', 'control.py', 'runtime-manifest.tsv'):
         shutil.copy2(ROOT / name, folder / name)
+    shutil.copytree(ROOT / 'ui', folder / 'ui', ignore=shutil.ignore_patterns(*IGNORED))
     source = ROOT / 'platform' / 'windows'
     for name in WINDOWS_SCRIPTS:
         shutil.copy2(source / name, scripts / name)
-    for name in ('start.cmd', 'stop.cmd'):
+    for name in ('start.cmd', 'stop.cmd', 'settings.cmd'):
         shutil.copy2(source / name, folder / name)
     return {}
 
@@ -106,16 +114,16 @@ def write_archive(folder, archive, links):
 
 def publish(output=None, target='all', config_path=None):
     output = (output or ROOT / 'dist').resolve()
-    protected = [ROOT, *(ROOT / name for name in ('platform', 'tests', 'tools'))]
+    protected = [ROOT, *(ROOT / name for name in ('platform', 'tests', 'tools', 'ui'))]
     if output == ROOT or any(path == output or path in output.parents for path in protected[1:]):
         raise ValueError('发布目录不能覆盖源码目录')
     validate_manifest(ROOT / 'runtime-manifest.tsv')
     guide = validate_guide(ROOT / 'README.md')
-    config = (json.dumps(load_config(config_path or ROOT / 'config.example.json'), ensure_ascii=False, indent=2) + '\n').encode('utf-8')
+    config = (json.dumps(load_config(config_path or ROOT / 'config.example.json', allow_unconfigured=True), ensure_ascii=False, indent=2) + '\n').encode('utf-8')
     if target not in ('all', 'macOS', 'Windows'):
         raise ValueError('target 必须是 all、macOS 或 Windows')
     platform = ROOT / 'platform' / 'windows'
-    for name in (*WINDOWS_SCRIPTS, 'start.cmd', 'stop.cmd'):
+    for name in (*WINDOWS_SCRIPTS, 'start.cmd', 'stop.cmd', 'settings.cmd'):
         path = platform / name
         if not path.is_file():
             raise ValueError(f'Windows 平台目录缺少 {name}')

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 [INPUT]: 当前系统的 ZIP 发布包，以及可选的缺环境安装场景。
-[OUTPUT]: 解压、启动、清洗转发、重复启动、停止的系统级验收结果。
+[OUTPUT]: 解压、清洗转发、设置鉴权、端口切换与启停的系统级验收。
 [POS]: CI 发布闸门；使用临时端口、服务标签与目录，不碰用户运行记录。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 """
@@ -19,6 +19,8 @@ import tempfile
 import threading
 import uuid
 import zipfile
+import time
+from urllib.parse import urlsplit
 
 
 class Upstream(BaseHTTPRequestHandler):
@@ -56,6 +58,49 @@ def health(port):
 
 def powershell_quote(value):
     return "'" + str(value).replace("'", "''") + "'"
+
+
+def settings_request(url, path, payload=None, authenticated=True):
+    target = urlsplit(url)
+    connection = http.client.HTTPConnection(target.hostname, target.port, timeout=30)
+    headers = {'Content-Type': 'application/json'}
+    if authenticated:
+        headers['X-Settings-Token'] = target.fragment
+    try:
+        connection.request('GET' if payload is None else 'POST', path,
+                           None if payload is None else json.dumps(payload), headers)
+        response = connection.getresponse()
+        return response.status, json.loads(response.read())
+    finally:
+        connection.close()
+
+
+def start_settings(package, temporary, environment, label):
+    script = (package / '启动代理.app/Contents/Resources/settings.py'
+              if sys.platform == 'darwin' else package / 'settings.py')
+    state_dir = temporary / 'settings-state'
+    command = [sys.executable, '-I', str(script), '--root', str(package),
+               '--config', str(package / 'config.json'), '--state-dir', str(state_dir), '--no-browser']
+    if label:
+        command += ['--service-dir', str(temporary / 'service'), '--service-label', label]
+    process = subprocess.Popen(command, env=environment, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    try:
+        deadline = time.monotonic() + 8
+        while time.monotonic() < deadline:
+            records = list(state_dir.glob('settings-*.json'))
+            if records:
+                record = json.loads(records[0].read_text())
+                if settings_request(record['url'], '/api/session')[0] == 200:
+                    return process, record['url'], command
+            if process.poll() is not None:
+                raise AssertionError('设置服务启动失败：' + process.stderr.read().decode('utf-8', errors='replace'))
+            time.sleep(.1)
+        raise AssertionError('设置服务未在规定时间内启动')
+    except Exception:
+        process.terminate()
+        process.wait(5)
+        process.stderr.close()
+        raise
 
 
 def commands(package, temporary, bootstrap):
@@ -118,6 +163,7 @@ def run(archive, bootstrap=False):
         config.update(port=port, upstream_base_url=f'http://127.0.0.1:{upstream.server_port}/v1')
         config_file.write_text(json.dumps(config), encoding='utf-8')
         start, stop, environment, label = commands(package, temporary, bootstrap)
+        settings_process = None
         try:
             subprocess.run(start, check=True, env=environment, timeout=420)
             first = health(port)
@@ -138,19 +184,41 @@ def run(archive, bootstrap=False):
             assert authorization == 'Bearer smoke-test'
             subprocess.run(start, check=True, env=environment, timeout=30)
             assert health(port)['pid'] == first['pid']
-            subprocess.run(stop, check=True, env=environment, timeout=30)
+            settings_process, settings_url, settings_command = start_settings(package, temporary, environment, label)
+            assert settings_request(settings_url, '/api/state', authenticated=False)[0] == 403
+            status, state = settings_request(settings_url, '/api/state')
+            assert status == 200 and state['status']['healthy'] and state['status']['port'] == port
+            subprocess.run(settings_command, check=True, env=environment, timeout=5, stdout=subprocess.DEVNULL)
+            assert settings_request(settings_url, '/api/session')[1]['pid'] == settings_process.pid
+            previous_port = port
+            port = free_port()
+            config['port'] = port
+            status, state = settings_request(settings_url, '/api/config', config)
+            assert status == 200 and state['status']['healthy'] and state['status']['port'] == port, state
+            assert health(port)['pid'] != first['pid']
+            try:
+                health(previous_port)
+            except (OSError, http.client.HTTPException):
+                pass
+            else:
+                raise AssertionError('应用配置后旧端口仍在监听')
+            assert settings_request(settings_url, '/api/stop', {})[0] == 200
             try:
                 health(port)
             except (OSError, http.client.HTTPException):
                 pass
             else:
                 raise AssertionError('停止后仍有代理响应')
-            print('PASS: runtime, start, sanitization, auth, duplicate start, stop', flush=True)
+            print('PASS: runtime, sanitization, settings auth, singleton, port change, stop', flush=True)
         except Exception:
             for log in list(temporary.rglob('*.log')):
                 print(log.name + ':\n' + log.read_text(encoding='utf-8', errors='replace')[-6000:])
             raise
         finally:
+            if settings_process:
+                settings_process.terminate()
+                settings_process.wait(5)
+                settings_process.stderr.close()
             subprocess.run(stop, env=environment, timeout=30, check=False,
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             if label:

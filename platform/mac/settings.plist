@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+[INPUT]: settings.sh 生成的 MacOS/launcher。
+[OUTPUT]: 设置代理应用身份与后台启动方式。
+[POS]: Mac 设置入口元信息，不声明开机自启。
+[PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleExecutable</key><string>launcher</string>
+<key>CFBundleIdentifier</key><string>local.relay-sanitizer.settings</string>
+<key>CFBundleName</key><string>设置代理</string>
+<key>CFBundlePackageType</key><string>APPL</string>
+<key>CFBundleVersion</key><string>1</string>
+<key>LSUIElement</key><true/>
+</dict></plist>

@@ -2,6 +2,7 @@
 > L2 | 父级: ../CLAUDE.md
 成员清单
 test_sanitizer.py: 本地 HTTP 上游回归。验证清洗、认证、SSE、错误边界和配置。
+test_settings.py: 空配置可打开、接口鉴权、端口冲突、请求保护与保存失败恢复。
 test_release.py: 干净检出、默认配置隔离、平台筛选与 ZIP 链接权限回归。
 test_docs.py: Markdown 与包内 HTML 的中文、代码、链接和转义回归。
 test_runtime.py: Mac 环境检查、安装、下载失败和校验失败的分支回归。

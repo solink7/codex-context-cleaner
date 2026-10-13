@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 [INPUT]: 标准库 HTTP、UTF-8 配置与客户端携带的请求头和 Responses JSON。
-[OUTPUT]: Responses/SSE 转发、/health 与 --check-config 配置检查。
+[OUTPUT]: 共用配置校验、Responses/SSE 转发、/health 与启动前检查。
 [POS]: 双端共用的代理源码；启动器负责进程，本文件校验配置并清洗历史。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 """
@@ -15,6 +15,7 @@ import math
 import pathlib
 import os
 import sys
+import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit, unquote
 from urllib.request import getproxies, proxy_bypass
@@ -26,8 +27,12 @@ HOP = {'connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization',
        'proxy-connection', 'te', 'trailer', 'transfer-encoding', 'upgrade', 'host', 'content-length'}
 
 
-def load_config(path=None):
+def load_config(path=None, allow_unconfigured=False):
     config = json.loads((path or ROOT / 'config.json').read_text(encoding='utf-8-sig'))
+    return validate_config(config, allow_unconfigured)
+
+
+def validate_config(config, allow_unconfigured=False):
     if not isinstance(config, dict):
         raise ValueError('config.json 必须是 JSON 对象')
     port = config.get('port')
@@ -43,6 +48,10 @@ def load_config(path=None):
     if type(config.get('assume_full_history', False)) is not bool:
         raise ValueError('assume_full_history 必须是 true 或 false')
     base_url = config.get('upstream_base_url')
+    if base_url == '' and allow_unconfigured:
+        return config
+    if base_url == '':
+        raise ValueError('请先打开“设置代理”，填写上游 API 地址')
     if not isinstance(base_url, str) or any(c.isspace() for c in base_url):
         raise ValueError('upstream_base_url 必须是无空白的 http(s) 地址')
     url = urlsplit(base_url)
@@ -59,6 +68,13 @@ def load_config(path=None):
     if loopback and upstream_port == port:
         raise ValueError('上游地址不能指向清洗代理自身')
     return config
+
+
+class ProxyServer(ThreadingHTTPServer):
+    def __init__(self, address, handler):
+        super().__init__(address, handler)
+        self.request_lock = threading.Lock()
+        self.active_requests = 0
 
 
 def hop_headers(headers):
@@ -120,11 +136,27 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == '/health':
-            self.reply(200, {'service': 'relay-sanitizer', 'status': 'ok', 'pid': os.getpid()})
+            health = {'service': 'relay-sanitizer', 'status': 'ok', 'pid': os.getpid()}
+            if hasattr(self.server, 'request_lock'):
+                with self.server.request_lock:
+                    health['active_requests'] = self.server.active_requests
+            self.reply(200, health)
         else:
             self.reply(405, {'error': {'message': '仅支持 HTTP POST Responses；不支持 WebSocket'}})
 
     def do_POST(self):
+        lock = getattr(self.server, 'request_lock', None)
+        if lock:
+            with lock:
+                self.server.active_requests += 1
+        try:
+            self.forward_request()
+        finally:
+            if lock:
+                with lock:
+                    self.server.active_requests -= 1
+
+    def forward_request(self):
         conn = None
         started = False
         try:
@@ -214,7 +246,7 @@ def main():
         if args.check_config:
             print(config['port'])
             return 0
-        server = ThreadingHTTPServer(('127.0.0.1', config['port']), Handler)
+        server = ProxyServer(('127.0.0.1', config['port']), Handler)
         server.config = config
     except (OSError, ValueError) as error:
         print(f'启动失败：{error}。请检查 config.json 和端口占用。', flush=True)

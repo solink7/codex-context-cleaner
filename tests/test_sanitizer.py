@@ -1,6 +1,6 @@
 """
 [INPUT]: sanitizer 的配置、清洗和 HTTP 入口；标准库本地模拟上游。
-[OUTPUT]: 配置、历史、认证、SSE 首块与错误边界的回归结果。
+[OUTPUT]: 配置、历史、认证、SSE 首块、活动请求计数与错误边界的回归。
 [POS]: 代理行为测试；只监听临时端口，不连接真实上游。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 """
@@ -159,7 +159,7 @@ class ForwardingTests(unittest.TestCase):
         cls.upstream = ThreadingHTTPServer(('127.0.0.1', 0), Upstream)
         cls.upstream.requests = []
         cls.upstream.release_stream = threading.Event()
-        cls.proxy = ThreadingHTTPServer(('127.0.0.1', 0), sanitizer.Handler)
+        cls.proxy = sanitizer.ProxyServer(('127.0.0.1', 0), sanitizer.Handler)
         cls.proxy.config = {'port': cls.proxy.server_port,
                             'upstream_base_url': f'http://127.0.0.1:{cls.upstream.server_port}/v1',
                             'timeout_seconds': 2}
@@ -215,6 +215,12 @@ class ForwardingTests(unittest.TestCase):
             self.assertEqual(response.getheader('Content-Type'), 'text/event-stream')
             self.assertEqual(response.readline(), b'data: first\n')
             self.assertFalse(self.upstream.release_stream.is_set())
+            health_client = http.client.HTTPConnection('127.0.0.1', self.proxy.server_port, timeout=2)
+            try:
+                health_client.request('GET', '/health')
+                self.assertEqual(json.loads(health_client.getresponse().read())['active_requests'], 1)
+            finally:
+                health_client.close()
             self.upstream.release_stream.set()
             self.assertIn(b'data: last', response.read())
         finally:
@@ -268,7 +274,7 @@ class ForwardingTests(unittest.TestCase):
         self.client.request('GET', '/health')
         response = self.client.getresponse()
         health = json.loads(response.read())
-        self.assertEqual(health, {'service': 'relay-sanitizer', 'status': 'ok', 'pid': os.getpid()})
+        self.assertEqual(health, {'service': 'relay-sanitizer', 'status': 'ok', 'pid': os.getpid(), 'active_requests': 0})
 
     def test_error_reply_tolerates_closed_client(self):
         handler = sanitizer.Handler.__new__(sanitizer.Handler)

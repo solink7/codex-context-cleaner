@@ -2,6 +2,8 @@
 > L2 | 父级: ../CLAUDE.md
 成员清单
 runtime.sh: Mac 环境引导的唯一源码，验证版本和标准库并安装专用 Python。
+settings.sh: 设置应用启动模板，复用环境引导并打开浏览器设置页。
+settings.plist: 设置应用身份模板；发布器生成设置代理.app。
 启动代理.app/: 自包含启动应用，读取应用包资源，再交由 launchd 运行代理。
 停止代理.app/: 停止唯一服务，共用启动应用的提示实现。
 应用包内 runtime.sh、代理、配置与清单由 tools/release.py 在构建时生成。
