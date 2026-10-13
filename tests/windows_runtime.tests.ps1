@@ -3,10 +3,14 @@
 # [POS]: 无额外测试依赖的控制层测试；模拟安装不代替 Windows 实机验收。
 # [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 param(
-    [string]$WindowsDirectory = (Join-Path (Split-Path $PSScriptRoot -Parent) 'platform\windows'),
+    [string]$WindowsDirectory,
     [Parameter(Mandatory=$true)][string]$Python
 )
 $ErrorActionPreference = 'Stop'
+# Windows PowerShell 5.1 在脚本体中提供 PSScriptRoot。
+if (-not $WindowsDirectory) {
+    $WindowsDirectory = Join-Path (Split-Path $PSScriptRoot -Parent) 'platform\windows'
+}
 $testCount = 0
 function Assert-Relay($Condition, [string]$Message) {
     if (-not $Condition) { throw $Message }
