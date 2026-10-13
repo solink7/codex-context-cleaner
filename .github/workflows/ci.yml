@@ -1,0 +1,95 @@
+# [INPUT]: push、pull_request、手动触发与 v* 版本标签。
+# [OUTPUT]: 双端验证后的 ZIP；版本标签生成同一个 GitHub Release。
+# [POS]: 自动发布闸门，只有两个系统都通过检查才允许发布。
+# [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+name: Test, package and release
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+jobs:
+  build:
+    name: Test and package (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: macOS
+          - os: windows-latest
+            target: Windows
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    env:
+      PYTHONUTF8: '1'
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+      - name: Run regression tests
+        run: python -B -m unittest discover -s tests -v
+      - name: Check Windows control layer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $python = (Get-Command python).Source
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/windows_runtime.tests.ps1 -Python $python
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build platform package
+        run: python -B tools/release.py --target ${{ matrix.target }}
+      - name: Verify clean build
+        run: git diff --exit-code
+      - name: Verify package and first-run installation
+        run: python -B tools/smoke.py --archive dist/codex-context-cleaner-${{ matrix.target }}.zip --bootstrap
+      - name: Save tested package
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: package-${{ matrix.target }}
+          path: dist/codex-context-cleaner-${{ matrix.target }}.zip
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
+  release:
+    name: Publish version
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Download tested packages
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: package-*
+          merge-multiple: true
+          path: dist
+      - name: Publish release with both packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Expected a version such as v0.1.0'; exit 1; }
+          test -f dist/codex-context-cleaner-macOS.zip
+          test -f dist/codex-context-cleaner-Windows.zip
+          gh release create "$RELEASE_TAG" dist/*.zip --verify-tag --draft --title "$RELEASE_TAG" --generate-notes
+          gh release edit "$RELEASE_TAG" --draft=false --latest

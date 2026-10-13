@@ -1,0 +1,12 @@
+# 统一跨平台文本；Windows 入口保留 CRLF。
+* text=auto
+*.py text eol=lf
+*.js text eol=lf
+*.sh text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.tsv text eol=lf
+*.yml text eol=lf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+**/launcher text eol=lf

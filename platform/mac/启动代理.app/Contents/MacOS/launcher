@@ -1,0 +1,93 @@
+#!/bin/zsh
+# [INPUT]: runtime.sh、status-ui.sh、固定清单与系统 JXA/Cocoa 状态窗口。
+# [OUTPUT]: 检查或安装 Python，核验健康后在同一窗口显示结果。
+# [POS]: Mac 启动编排；串行化启停，避开 launchd 的桌面访问限制。
+# [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ROOT="${0:A:h:h:h:h}"
+APP_CONTENTS="${0:A:h:h}"
+SERVICE="$HOME/Library/Application Support/Relay-Sanitizer"
+LABEL=local.relay-sanitizer
+umask 077
+source "$APP_CONTENTS/MacOS/status-ui.sh" || exit 1
+mkdir -p "$SERVICE" || { notice '无法创建后台运行目录。' error; exit 1; }
+exec >>"$SERVICE/launcher.log" 2>&1
+print "启动入口：$ROOT"
+if ! /usr/bin/shlock -f "$SERVICE/start.lock" -p $$; then
+ # 重复点击只唤起已有窗口，不再打开第二份提示。
+ print -r -- '正在启动，已唤起当前进度窗口。'
+ : > "$UI_ACTIVATE"
+ exit 0
+fi
+cleanup() {
+ ui_cleanup
+ rm -f "$SERVICE/start.lock"
+}
+trap cleanup EXIT
+trap 'exit 1' HUP INT TERM
+ui_begin '正在检查本机运行环境…' || { notice '无法创建启动状态文件。' error; exit 1; }
+source "$APP_CONTENTS/MacOS/runtime.sh" || { notice '启动文件不完整，请重新解压整个工具文件夹。' error; exit 1; }
+MAC_VERSION=$(/usr/bin/sw_vers -productVersion)
+if (( ${MAC_VERSION%%.*} < 11 )); then
+ notice '需要 macOS 11 或更新版本。' error
+ exit 1
+fi
+case $(/usr/bin/uname -m) in
+ arm64) PLATFORM=macos-arm64 ;;
+ x86_64) PLATFORM=macos-x64 ;;
+ *) notice '不支持这台 Mac 的芯片类型。' error; exit 1 ;;
+esac
+PYTHON_CANDIDATES=(/opt/homebrew/bin/python3 /usr/local/bin/python3 /Library/Frameworks/Python.framework/Versions/Current/bin/python3)
+# 系统 Python 可是开发工具占位入口；未装开发工具时不触发安装提示。
+if /usr/bin/xcode-select -p >/dev/null 2>&1; then PYTHON_CANDIDATES+=(/usr/bin/python3); fi
+export SSL_CERT_FILE=/etc/ssl/cert.pem
+if ! ensure_python "$APP_CONTENTS/Resources/runtime-manifest.tsv" "$SERVICE" "$PLATFORM" "${PYTHON_CANDIDATES[@]}"; then
+ notice "$RUNTIME_ERROR" error
+ exit 1
+fi
+P="$PYTHON_BIN"
+show_progress '运行环境已就绪，正在检查代理配置…'
+PORT=$("$P" "$APP_CONTENTS/Resources/sanitizer.py" --check-config) || { notice "配置检查失败：
+$PORT" error; exit 1; }
+ACTIVE_PORT="$PORT"
+if [[ -f "$SERVICE/config.json" ]]; then
+ ACTIVE_PORT=$("$P" -c 'import json,sys; print(int(json.load(open(sys.argv[1], encoding="utf-8-sig"))["port"]))' "$SERVICE/config.json" 2>/dev/null) || ACTIVE_PORT="$PORT"
+fi
+healthy() {
+ local service_pid=$(/bin/launchctl list "$LABEL" 2>/dev/null | /usr/bin/awk '/"PID"/ {gsub(";", "", $3); print $3}')
+ [[ -n "$service_pid" ]] || return 1
+ "$P" - "$ACTIVE_PORT" "$service_pid" <<'CHECK'
+import json,sys,urllib.request
+try:
+ opener=urllib.request.build_opener(urllib.request.ProxyHandler({}))
+ with opener.open('http://127.0.0.1:'+sys.argv[1]+'/health', timeout=.5) as r: d=json.load(r)
+ sys.exit(not (d.get('service')=='relay-sanitizer' and d.get('pid')==int(sys.argv[2])))
+except Exception: sys.exit(1)
+CHECK
+}
+if healthy; then notice "代理已在运行：127.0.0.1:$ACTIVE_PORT" ok; exit 0; fi
+/bin/launchctl remove "$LABEL" 2>/dev/null
+ACTIVE_PORT="$PORT"
+show_progress '配置检查通过，正在启动代理…'
+# 只从应用包复制运行文件，新安装的 Python 无需申请桌面目录访问。
+"$P" - "$APP_CONTENTS/Resources" "$SERVICE" <<'COPY'
+from pathlib import Path
+import sys
+source, target = map(Path, sys.argv[1:])
+for name in ('sanitizer.py', 'config.json'):
+    (target / name).write_bytes((source / name).read_bytes())
+COPY
+if (( $? != 0 )); then
+ notice "复制运行文件失败。详细原因：
+$(/usr/bin/tail -n 6 "$SERVICE/launcher.log")" error
+ exit 1
+fi
+/bin/launchctl submit -l "$LABEL" -o "$SERVICE/stdout.log" -e "$SERVICE/stderr.log" -- /usr/bin/env SSL_CERT_FILE=/etc/ssl/cert.pem "$P" -I -u "$SERVICE/sanitizer.py"
+for attempt in {1..40}; do
+ if healthy; then notice "代理已启动：127.0.0.1:$PORT" ok; exit 0; fi
+ sleep 0.2
+done
+/bin/launchctl remove "$LABEL" 2>/dev/null
+notice "代理启动失败。请检查端口占用及日志：
+$SERVICE/stdout.log
+$SERVICE/stderr.log" error
+exit 1

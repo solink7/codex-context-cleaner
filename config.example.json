@@ -1,0 +1,6 @@
+{
+  "port": 8787,
+  "upstream_base_url": "https://agentrouter.org/v1",
+  "timeout_seconds": 600,
+  "assume_full_history": false
+}

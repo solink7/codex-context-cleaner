@@ -1,0 +1,20 @@
+.DS_Store
+__pycache__/
+*.py[cod]
+.runtime/
+/dist/*
+!/dist/CLAUDE.md
+
+# 本机配置、调试入口和构建副本不进入公开仓库。
+/config.json
+/启动代理.app
+/停止代理.app
+/README.html
+/platform/mac/启动代理.app/Contents/MacOS/runtime.sh
+/platform/mac/启动代理.app/Contents/Resources/config.json
+/platform/mac/启动代理.app/Contents/Resources/sanitizer.py
+/platform/mac/启动代理.app/Contents/Resources/runtime-manifest.tsv
+/platform/mac/停止代理.app/Contents/MacOS/progress.js
+/platform/mac/停止代理.app/Contents/MacOS/status-ui.sh
+.env
+.env.*

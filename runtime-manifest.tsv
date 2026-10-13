@@ -1,0 +1,6 @@
+platform	version	url	sha256
+macos-arm64	3.13.16	https://github.com/astral-sh/python-build-standalone/releases/download/20261009/cpython-3.13.16%2B20261009-aarch64-apple-darwin-install_only_stripped.tar.gz	11785155d0f70e634178219c20925d8f20be00a3da4684fc4f5019dd15602ef7
+macos-x64	3.13.16	https://github.com/astral-sh/python-build-standalone/releases/download/20261009/cpython-3.13.16%2B20261009-x86_64-apple-darwin-install_only_stripped.tar.gz	bd085c51e960f00ee33b630e2b13ac90fe90cdc3da25a0f0bc0719b1294920bf
+windows-x64	3.13.16	https://www.python.org/ftp/python/3.13.16/python-3.13.16-embed-amd64.zip	97dae5274cc54867065e8d5a3226e48c35017ed332a0fdb0e27d5b5821961297
+windows-x86	3.13.16	https://www.python.org/ftp/python/3.13.16/python-3.13.16-embed-win32.zip	0a3b162281b0a8e4d95d748e40ec2db9927086c7ec4231a5c8d29f91a1c2ba89
+windows-arm64	3.13.16	https://www.python.org/ftp/python/3.13.16/python-3.13.16-embed-arm64.zip	790d097697a2020477549a6764d89d22194c88d6e42caebcb2db63791e004c94
