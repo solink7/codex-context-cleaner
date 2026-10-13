@@ -1,4 +1,4 @@
-﻿# [INPUT]: 固定下载清单、已安装 Python 与系统网络/ZIP 能力。
+﻿# [INPUT]: 固定下载清单、Python 与 .NET 网络、ZIP、SHA-256 能力。
 # [OUTPUT]: 可用的 Python 路径；缺少环境时安装当前用户专用运行环境。
 # [POS]: Windows 环境引导层；无管理员权限依赖，不修改 PATH 或系统 Python。
 # [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
@@ -105,6 +105,19 @@ function Save-RelayRuntime([string]$Url, [string]$Destination) {
     }
 }
 
+function Get-RelaySha256([string]$Path) {
+    # 使用 .NET 内置实现，不依赖 PowerShell 模块自动加载。
+    $stream = $null
+    $algorithm = [Security.Cryptography.SHA256]::Create()
+    try {
+        $stream = [IO.File]::OpenRead($Path)
+        return [BitConverter]::ToString($algorithm.ComputeHash($stream)).Replace('-', '').ToLowerInvariant()
+    } finally {
+        if ($stream) { $stream.Dispose() }
+        $algorithm.Dispose()
+    }
+}
+
 function Install-RelayPython($Entry, [string]$RuntimeRoot) {
     $stage = Join-Path $RuntimeRoot ('install-' + [Guid]::NewGuid().ToString('N'))
     $destination = Join-Path $RuntimeRoot 'python'
@@ -116,7 +129,7 @@ function Install-RelayPython($Entry, [string]$RuntimeRoot) {
         $archive = Join-Path $stage 'python.zip'
         Save-RelayRuntime $Entry.url $archive
         Write-Host '[3/5] 下载完成，正在校验并安装运行环境…'
-        if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant() -ne $Entry.sha256) {
+        if ((Get-RelaySha256 $archive) -ne $Entry.sha256) {
             throw '下载文件校验失败，已取消安装。请检查网络后重新启动。'
         }
         try {

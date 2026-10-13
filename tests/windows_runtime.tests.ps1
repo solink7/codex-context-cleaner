@@ -65,9 +65,12 @@ $originalProbe = (Get-Item Function:\Test-RelayPython).ScriptBlock
 try {
     New-Item -ItemType Directory -Path $fixture, $runtimeRoot | Out-Null
     [IO.File]::WriteAllText((Join-Path $fixture 'python.exe'), 'healthy')
+    $hashProbe = Join-Path $tempRoot 'hash.txt'
+    [IO.File]::WriteAllBytes($hashProbe, [Text.Encoding]::ASCII.GetBytes('abc'))
+    Assert-Relay ((Get-RelaySha256 $hashProbe) -eq 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad') '内置 SHA-256 校验结果不正确'
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     [IO.Compression.ZipFile]::CreateFromDirectory($fixture, $archive)
-    $entry = [pscustomobject]@{ url='https://www.python.org/fixture.zip'; sha256=(Get-FileHash -LiteralPath $archive).Hash.ToLowerInvariant() }
+    $entry = [pscustomobject]@{ url='https://www.python.org/fixture.zip'; sha256=(Get-RelaySha256 $archive) }
     $script:relayFixtureArchive = $archive
     $script:relayFailFinalProbe = $false
     $script:relayProbeCount = 0
