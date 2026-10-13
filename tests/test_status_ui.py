@@ -1,5 +1,5 @@
 """
-[INPUT]: Mac 阶段/文本协议、共用提示脚本与原生 JXA 状态窗口。
+[INPUT]: 固定 UTF-8 字节的阶段/文本协议、共用提示脚本与原生 JXA 窗口。
 [OUTPUT]: 中文状态往返、失败保留与成功自动关闭的回归结果。
 [POS]: 提示层测试；使用临时状态文件，不启动代理或访问真实上游。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
@@ -29,9 +29,9 @@ vm.createContext(context);
 vm.runInContext(require('node:fs').readFileSync(process.argv[1], 'utf8'), context);
 console.log(JSON.stringify(context.parseStatus(require('node:fs').readFileSync(0, 'utf8'))));
 '''
-        result = subprocess.run([node, '-e', code, str(UI / 'progress.js')], input=text,
-                                capture_output=True, text=True, timeout=5, check=True)
-        return json.loads(result.stdout)
+        result = subprocess.run([node, '-e', code, str(UI / 'progress.js')], input=text.encode('utf-8'),
+                                capture_output=True, timeout=5, check=True)
+        return json.loads(result.stdout.decode('utf-8'))
 
     def test_status_keeps_chinese_and_multiple_lines(self):
         message = '启动失败：端口已被占用。\n请先停止旧代理。\n路径含有 空格和中文。'
