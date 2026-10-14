@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-[INPUT]: 当前系统 ZIP 与缺环境场景；隔离子进程显式启用 UTF-8。
-[OUTPUT]: 解压、清洗转发、设置鉴权、端口切换与启停的系统级验收。
+[INPUT]: 当前系统 ZIP、真实设置启动入口与缺环境场景。
+[OUTPUT]: 设置入口、静态页面、鉴权、端口切换与启停验收。
 [POS]: CI 发布闸门；使用临时端口、服务标签与目录，不碰用户运行记录。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 """
@@ -12,6 +12,7 @@ import json
 import os
 from pathlib import Path
 import re
+import signal
 import socket
 import subprocess
 import sys
@@ -75,37 +76,58 @@ def settings_request(url, path, payload=None, authenticated=True, timeout=30):
         connection.close()
 
 
-def start_settings(package, temporary, environment, label):
-    script = (package / '启动代理.app/Contents/Resources/settings.py'
-              if sys.platform == 'darwin' else package / 'settings.py')
-    state_dir = temporary / 'settings-state'
-    command = [sys.executable, '-I', '-X', 'utf8', str(script), '--root', str(package),
-               '--config', str(package / 'config.json'), '--state-dir', str(state_dir), '--no-browser']
-    if label:
-        command += ['--service-dir', str(temporary / 'service'), '--service-label', label]
-    error_log = temporary / 'settings.stderr.log'
-    with error_log.open('wb') as stream:
-        process = subprocess.Popen(command, env=environment, stdout=subprocess.DEVNULL, stderr=stream)
+def start_settings(package, temporary, environment, label, quarantine=False, bootstrap=False):
+    if sys.platform == 'darwin':
+        script = package / '设置代理.app/Contents/MacOS/launcher'
+        text = script.read_text(encoding='utf-8')
+        text = text.replace('SERVICE="$HOME/Library/Application Support/codex-context-cleaner"',
+                            'SERVICE="' + str(temporary / 'service') + '"')
+        text = text.replace('RUNTIME_ROOT="$HOME/Library/Application Support/codex-context-cleaner"',
+                            'RUNTIME_ROOT="' + str(temporary / 'service') + '"')
+        text = text.replace('--root "$ROOT"', '--root "$ROOT" --service-dir "' +
+                            str(temporary / 'service') + '" --service-label ' + label)
+        if bootstrap:
+            text = re.sub(r'^PYTHON_CANDIDATES=.*$', 'PYTHON_CANDIDATES=()', text, flags=re.M)
+            text = re.sub(r'^if /usr/bin/xcode-select.*$', '', text, flags=re.M)
+        script.write_text(text, encoding='utf-8')
+        command = ['/bin/zsh', str(script)]
+        state_dir = temporary / 'service'
+        if quarantine:
+            application = script.parents[2]
+            marker = f'00c1;{int(time.time()):x};CleanerRegression;{uuid.uuid4()}'
+            subprocess.run(['/usr/bin/xattr', '-w', 'com.apple.quarantine', marker, str(application)], check=True)
+            command = ['/usr/bin/open', '-n', '-W', '--env', 'CODEX_CONTEXT_CLEANER_HEADLESS=1', str(application)]
+    else:
+        script = package / 'platform/windows/settings.ps1'
+        text = script.read_text(encoding='utf-8-sig')
+        text = re.sub(r'^    \$runtimeRoot = .*$',
+                      lambda _: '    $runtimeRoot = ' + powershell_quote(temporary / 'python-runtime'),
+                      text, flags=re.M)
+        script.write_bytes(b'\xef\xbb\xbf' + text.replace('\n', '\r\n').encode('utf-8'))
+        command = ['powershell.exe', '-NoLogo', '-NoProfile', '-NonInteractive',
+                   '-ExecutionPolicy', 'Bypass', '-File', str(script)]
+        state_dir = package / '.runtime'
+    subprocess.run(command, env=environment, check=True, timeout=60)
+    if quarantine and '/AppTranslocation/' not in (state_dir / 'settings-launcher.log').read_text(encoding='utf-8'):
+        raise AssertionError('未进入真实 Mac 下载隔离路径')
+    records = list(state_dir.glob('settings-*.json'))
+    if len(records) != 1:
+        raise AssertionError('设置入口未生成唯一会话记录')
+    record = json.loads(records[0].read_text(encoding='utf-8'))
+    status, session = settings_request(record['url'], '/api/session')
+    if status != 200 or session.get('pid') != record['pid']:
+        raise AssertionError('设置入口未启动可用服务')
+    target = urlsplit(record['url'])
+    connection = http.client.HTTPConnection(target.hostname, target.port, timeout=3)
     try:
-        deadline = time.monotonic() + 30
-        while time.monotonic() < deadline:
-            records = list(state_dir.glob('settings-*.json'))
-            if records:
-                try:
-                    record = json.loads(records[0].read_text(encoding='utf-8'))
-                    status, session = settings_request(record['url'], '/api/session', timeout=1)
-                    if status == 200 and session.get('pid') == process.pid:
-                        return process, record['url'], command
-                except (OSError, ValueError, http.client.HTTPException):
-                    pass
-            if process.poll() is not None:
-                raise AssertionError('设置服务启动失败：' + error_log.read_text(encoding='utf-8', errors='replace'))
-            time.sleep(.1)
-        raise AssertionError('设置服务未在规定时间内启动')
-    except Exception:
-        process.terminate()
-        process.wait(5)
-        raise
+        for path in ('/', '/settings.js', '/settings.css'):
+            connection.request('GET', path)
+            response = connection.getresponse()
+            if response.status != 200 or not response.read():
+                raise AssertionError('设置资源不可用：' + path)
+    finally:
+        connection.close()
+    return record['pid'], record['url'], command
 
 
 def commands(package, temporary, bootstrap):
@@ -148,8 +170,10 @@ def commands(package, temporary, bootstrap):
     return start, stop, environment, label
 
 
-def run(archive, bootstrap=False):
-    with tempfile.TemporaryDirectory(prefix='context-cleaner-smoke-') as name:
+def run(archive, bootstrap=False, quarantine=False):
+    if quarantine and sys.platform != 'darwin':
+        raise ValueError('下载隔离验收只支持 macOS')
+    with tempfile.TemporaryDirectory(prefix="cleaner 验收 '路径'-") as name:
         temporary = Path(name).resolve()
         if sys.platform == 'darwin':
             subprocess.run(['/usr/bin/ditto', '-x', '-k', str(archive.resolve()), str(temporary)], check=True)
@@ -168,10 +192,18 @@ def run(archive, bootstrap=False):
         server_thread = threading.Thread(target=upstream.serve_forever, daemon=True)
         server_thread.start()
         config.update(port=port, upstream_base_url=f'http://127.0.0.1:{upstream.server_port}/v1')
-        config_file.write_text(json.dumps(config), encoding='utf-8')
         start, stop, environment, label = commands(package, temporary, bootstrap)
         settings_process = None
         try:
+            # 首次使用先打开空配置设置页；从页面保存后才启动代理。
+            settings_process, settings_url, settings_command = start_settings(
+                package, temporary, environment, label, quarantine, bootstrap)
+            assert settings_request(settings_url, '/api/state', authenticated=False)[0] == 403
+            status, state = settings_request(settings_url, '/api/state')
+            assert status == 200 and not state['status']['running']
+            assert state['config']['upstream_base_url'] == ''
+            status, state = settings_request(settings_url, '/api/config', config)
+            assert status == 200 and state['config'] == config, state
             subprocess.run(start, check=True, env=environment, timeout=420)
             first = health(port)
             assert first['service'] == 'codex-context-cleaner'
@@ -191,12 +223,10 @@ def run(archive, bootstrap=False):
             assert authorization == 'Bearer smoke-test'
             subprocess.run(start, check=True, env=environment, timeout=30)
             assert health(port)['pid'] == first['pid']
-            settings_process, settings_url, settings_command = start_settings(package, temporary, environment, label)
-            assert settings_request(settings_url, '/api/state', authenticated=False)[0] == 403
             status, state = settings_request(settings_url, '/api/state')
             assert status == 200 and state['status']['healthy'] and state['status']['port'] == port
             subprocess.run(settings_command, check=True, env=environment, timeout=5, stdout=subprocess.DEVNULL)
-            assert settings_request(settings_url, '/api/session')[1]['pid'] == settings_process.pid
+            assert settings_request(settings_url, '/api/session')[1]['pid'] == settings_process
             previous_port = port
             port = free_port()
             config['port'] = port
@@ -223,8 +253,10 @@ def run(archive, bootstrap=False):
             raise
         finally:
             if settings_process:
-                settings_process.terminate()
-                settings_process.wait(5)
+                os.kill(settings_process, signal.SIGTERM)
+                deadline = time.monotonic() + 5
+                while list((temporary / 'service' if label else package / '.runtime').glob('settings-*.json')) and time.monotonic() < deadline:
+                    time.sleep(.1)
             subprocess.run(stop, env=environment, timeout=30, check=False,
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             if label:
@@ -239,8 +271,9 @@ def main():
     parser = argparse.ArgumentParser(description='验证发布包在本机的完整启停链路')
     parser.add_argument('--archive', type=Path, required=True)
     parser.add_argument('--bootstrap', action='store_true', help='模拟缺少环境，真实下载并安装专用 Python')
+    parser.add_argument('--quarantine', action='store_true', help='Mac 使用下载标记和 Launch Services 验证真实隔离启动')
     args = parser.parse_args()
-    run(args.archive, args.bootstrap)
+    run(args.archive, args.bootstrap, args.quarantine)
 
 
 if __name__ == '__main__':

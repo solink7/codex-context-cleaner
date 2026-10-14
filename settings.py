@@ -2,7 +2,7 @@
 """
 [INPUT]: control.ServiceController、本机 UI 资源、TCP 监听与系统浏览器。
 [OUTPUT]: 独立回环端口的设置页、认证后的配置与启停接口。
-[POS]: 本机设置入口；不依赖 DNS，监听就绪后原子发布会话记录。
+[POS]: 共用设置入口；先核验会话，再确认浏览器接受打开请求。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 """
 import argparse
@@ -171,8 +171,8 @@ def reopen_existing(path, open_browser=True):
                 return False
         finally:
             connection.close()
-        if open_browser:
-            webbrowser.open(state['url'])
+        if open_browser and not webbrowser.open(state['url']):
+            return False
         return True
     except (OSError, ValueError, KeyError, TypeError, http.client.HTTPException):
         return False
@@ -187,6 +187,7 @@ def main():
     parser.add_argument('--service-label', default='local.codex-context-cleaner')
     parser.add_argument('--no-browser', action='store_true')
     parser.add_argument('--check-running', action='store_true')
+    parser.add_argument('--open-running', action='store_true')
     args = parser.parse_args()
     os.umask(0o077)
     controller = ServiceController(args.root, args.config, args.service_dir, args.service_label)
@@ -194,8 +195,8 @@ def main():
     folder.mkdir(parents=True, exist_ok=True)
     key = hashlib.sha256(str(args.root.resolve()).encode()).hexdigest()[:12]
     state_file = folder / f'settings-{key}.json'
-    if args.check_running:
-        raise SystemExit(0 if reopen_existing(state_file, open_browser=False) else 1)
+    if args.check_running or args.open_running:
+        raise SystemExit(0 if reopen_existing(state_file, open_browser=args.open_running) else 1)
     lock = acquire_lock(folder / f'settings-{key}.lock')
     if lock is None:
         if not reopen_existing(state_file, not args.no_browser):
@@ -212,7 +213,8 @@ def main():
         staging.chmod(0o600)
         staging.replace(state_file)
         if not args.no_browser:
-            webbrowser.open(server.url)
+            if not webbrowser.open(server.url):
+                raise SystemExit('无法打开默认浏览器，请检查系统浏览器设置。')
         print('设置页面：' + server.url, flush=True)
         signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
         worker.join()

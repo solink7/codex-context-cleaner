@@ -57,7 +57,7 @@ jobs:
       - name: Verify clean build
         run: git diff --exit-code
       - name: Verify package and first-run installation
-        run: python -B tools/smoke.py --archive dist/codex-context-cleaner-${{ matrix.target }}.zip --bootstrap
+        run: python -B tools/smoke.py --archive dist/codex-context-cleaner-${{ matrix.target }}.zip --bootstrap ${{ runner.os == 'macOS' && '--quarantine' || '' }}
       - name: Save tested package
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

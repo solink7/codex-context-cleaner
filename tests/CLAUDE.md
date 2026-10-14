@@ -3,8 +3,8 @@
 成员清单
 test_branding.py: 当前名称、日志路径和前代服务阻止重复启动的回归。
 test_sanitizer.py: 本地 HTTP 上游回归。验证清洗、认证、SSE、错误边界和配置。
-test_settings.py: 配置恢复、鉴权与端口冲突；验证入口不等后台输出关闭。
-test_release.py: 干净检出、默认配置隔离、平台筛选与 ZIP 链接权限回归。
+test_settings.py: 浏览器失败、配置恢复与鉴权；验证入口不等后台输出关闭。
+test_release.py: 自包含应用、唯一配置、干净检出与 ZIP 链接权限回归。
 test_docs.py: Markdown 与包内 HTML 的中文、代码、链接和转义回归。
 test_runtime.py: Mac 环境检查、安装、下载失败和校验失败的分支回归。
 test_status_ui.py: 固定 UTF-8 字节传输的文本协议及原生窗口生命周期，验证失败保留与成功关闭；GUI 测试在 CI 跳过。

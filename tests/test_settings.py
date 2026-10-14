@@ -1,6 +1,6 @@
 """
 [INPUT]: 共用配置控制层、本机设置服务与临时文件和 HTTP 夹具。
-[OUTPUT]: 后台进程输出继承、配置恢复、端口冲突与设置鉴权回归。
+[OUTPUT]: 浏览器打开失败、配置恢复、端口冲突与设置鉴权回归。
 [POS]: 设置功能测试；不调用用户的代理，不连接真实上游。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 """
@@ -279,6 +279,15 @@ class SettingsHttpTests(unittest.TestCase):
         second = acquire_lock(path)
         self.assertIsNotNone(second)
         second.close()
+
+    def test_browser_failure_is_not_reported_as_success(self):
+        path = Path(self.temp.name) / 'settings.json'
+        path.write_text(json.dumps({'url': self.server.url, 'pid': os.getpid()}))
+        with patch('settings.webbrowser.open', return_value=False) as browser:
+            self.assertFalse(reopen_existing(path))
+            browser.assert_called_once_with(self.server.url)
+        with patch('settings.webbrowser.open', return_value=True):
+            self.assertTrue(reopen_existing(path))
 
 
 if __name__ == '__main__':

@@ -12,7 +12,7 @@ dist/: 自动生成的压缩包，不是源码目录。
 ## 成员清单
 sanitizer.py: 唯一代理源码，校验配置，清洗历史并转发 HTTP/SSE。
 control.py: 原子写入配置、核验身份与启停；临时文件捕获入口输出。
-settings.py: 独立回环端口的设置服务，以会话令牌保护读写和启停。
+settings.py: 会话令牌保护设置服务；核验就绪与浏览器打开结果。
 runtime-manifest.tsv: 固定运行环境版本、架构、下载地址和 SHA-256。
 config.example.json: 上游地址留空的首次配置，不含 API Key。
 README.md: 面向用户的唯一使用说明，GitHub 直接展示，包内生成 HTML。
@@ -35,6 +35,8 @@ Mac 应用中的代理、清单、运行时脚本与停止提示副本只在构�
 
 ## 平台边界
 Mac 包含启动、停止、设置三个应用，以及配置快捷入口与 HTML 说明。
+设置应用自包含资源；隔离启动向系统查询原解压目录。
+配置保留唯一来源；设置保存与启停指向原解压目录。
 Windows 包包含代理、设置页、配置、控制脚本与 HTML 说明。
 新安装的 Mac Python 只读取应用包与 Library，不读取桌面普通文件。
 服务标签为 local.codex-context-cleaner，健康标识为 codex-context-cleaner。
@@ -48,6 +50,8 @@ Mac 停止入口兼容前代服务，只停止注册标签对应的进程。
 Mac 单窗口显示进度与结果；Windows 在原命令窗口显示结果。
 CODEX_CONTEXT_CLEANER_HEADLESS=1 供设置控制和验收调用，关闭 Mac 状态窗口。
 GUI 生命周期测试只在本地桌面运行，CI 验证实际后台服务链路。
+双端验收调用设置入口；验证静态页面与重复打开。
+Mac 发布验收经 Launch Services 进入真实下载隔离。
 
 ## 设置边界
 设置页独立监听系统分配的回环端口，不依赖代理已启动。

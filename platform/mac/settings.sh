@@ -1,12 +1,12 @@
 #!/bin/zsh
-# [INPUT]: 既有 Mac 环境引导与启动应用内的设置源码。
-# [OUTPUT]: 安装或复用 Python，后台打开独立设置页。
-# [POS]: 设置应用入口；配置为空或代理端口冲突时仍可打开。
+# [INPUT]: 自身应用资源、security 原路径查询与唯一配置。
+# [OUTPUT]: 安装或复用 Python，核验设置服务并打开浏览器。
+# [POS]: 自包含设置入口；隔离路径只读，配置与启停使用原目录。
 # [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 SCRIPT="${0:A}"
 if [[ "${SCRIPT:t}" == launcher ]]; then
+ APP_CONTENTS="${SCRIPT:h:h}"
  ROOT="${SCRIPT:h:h:h:h}"
- APP_CONTENTS="$ROOT/启动代理.app/Contents"
  RESOURCES="$APP_CONTENTS/Resources"
  RUNTIME="$APP_CONTENTS/MacOS/runtime.sh"
 else
@@ -18,13 +18,40 @@ fi
 SERVICE="$HOME/Library/Application Support/codex-context-cleaner"
 umask 077
 mkdir -p "$SERVICE" || exit 1
+exec >>"$SERVICE/settings-launcher.log" 2>&1
+print -r -- "设置入口：$SCRIPT"
 source "$APP_CONTENTS/MacOS/status-ui.sh" || exit 1
 source "$RUNTIME" || exit 1
 # 设置入口使用独立状态文件，不占用代理启停的状态窗口。
 SERVICE="$SERVICE/settings-launcher"
 mkdir -p "$SERVICE" || exit 1
+UI_ACTIVATE="$SERVICE/ui.activate"
 ui_begin '正在准备设置界面…' || exit 1
 trap ui_cleanup EXIT
+# 系统允许打开后仍会隔离应用；从系统查询原路径，不扫描用户目录。
+if [[ "$SCRIPT" == */AppTranslocation/* ]]; then
+ ORIGINAL=$(/usr/bin/security translocate-original-path "${SCRIPT:h:h:h}") || {
+  notice '无法定位解压目录，请在 Finder 中移动整个工具文件夹后重试。' error
+  exit 1
+ }
+ ORIGINAL="${ORIGINAL#*$'\n\t'}"
+ if [[ "$ORIGINAL" != /* || ! -d "$ORIGINAL" || "$ORIGINAL" == */AppTranslocation/* ]]; then
+  notice '无法定位解压目录，请在 Finder 中移动整个工具文件夹后重试。' error
+  exit 1
+ fi
+ ROOT="${ORIGINAL:h}"
+ # 后台服务读取原应用资源，避免依赖临时隔离挂载的生命周期。
+ RESOURCES="$ORIGINAL/Contents/Resources"
+fi
+if [[ "${SCRIPT:t}" == launcher ]]; then
+ CONFIG="$ROOT/启动代理.app/Contents/Resources/config.json"
+else
+ CONFIG="$ROOT/config.json"
+fi
+if [[ ! -f "$CONFIG" || ! -f "$RESOURCES/settings.py" ]]; then
+ notice '工具文件不完整，请完整解压后重试。' error
+ exit 1
+fi
 MAC_VERSION=$(/usr/bin/sw_vers -productVersion)
 if (( ${MAC_VERSION%%.*} < 11 )); then
  notice '需要 macOS 11 或更新版本。' error
@@ -44,10 +71,10 @@ if ! ensure_python "$RESOURCES/runtime-manifest.tsv" "$RUNTIME_ROOT" "$PLATFORM"
  exit 1
 fi
 # 配置校验由页面保存时完成；此处无需已填写的上游地址。
-BROWSER_ARGS=()
-[[ "${CODEX_CONTEXT_CLEANER_HEADLESS:-0}" != 1 ]] || BROWSER_ARGS=(--no-browser)
-/usr/bin/nohup "$PYTHON_BIN" -I -X utf8 "$RESOURCES/settings.py" --root "$ROOT" --config "$RESOURCES/config.json" "${BROWSER_ARGS[@]}" \
- >"$RUNTIME_ROOT/settings.log" 2>&1 </dev/null &
+if ! "$PYTHON_BIN" -I -X utf8 "$RESOURCES/settings.py" --root "$ROOT" --check-running; then
+ /usr/bin/nohup "$PYTHON_BIN" -I -X utf8 "$RESOURCES/settings.py" --root "$ROOT" --config "$CONFIG" --no-browser \
+  >"$RUNTIME_ROOT/settings.log" 2>&1 </dev/null &
+fi
 READY=0
 for attempt in {1..30}; do
  if "$PYTHON_BIN" -I -X utf8 "$RESOURCES/settings.py" --root "$ROOT" --check-running; then
@@ -60,4 +87,12 @@ if (( READY == 0 )); then
  notice '设置页启动失败，请查看 settings.log 后重试。' error
  exit 1
 fi
-notice '设置已在浏览器打开。' ok
+MESSAGE='设置服务已就绪。'
+if [[ "${CODEX_CONTEXT_CLEANER_HEADLESS:-0}" != 1 ]]; then
+ if ! "$PYTHON_BIN" -I -X utf8 "$RESOURCES/settings.py" --root "$ROOT" --open-running; then
+  notice '无法打开默认浏览器，请查看 settings-launcher.log。' error
+  exit 1
+ fi
+ MESSAGE='设置已在浏览器打开。'
+fi
+notice "$MESSAGE" ok

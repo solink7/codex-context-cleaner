@@ -107,7 +107,7 @@ API Key 继续填写在客户端中，无需交给设置页。缺少 Python 时�
 
 ### 去哪里查看错误日志
 
-- **macOS**：在 Finder 按 `Command + Shift + G`，输入 `~/Library/Application Support/codex-context-cleaner/`，查看 `launcher.log`、`stdout.log`、`stderr.log`；设置入口的错误记录在 `settings.log`。
+- **macOS**：在 Finder 按 `Command + Shift + G`，输入 `~/Library/Application Support/codex-context-cleaner/`，查看 `launcher.log`、`stdout.log`、`stderr.log`；设置入口日志为 `settings-launcher.log`，设置服务日志为 `settings.log`。
 - **Windows**：打开解压目录中的 `.runtime` 文件夹，查看 `stdout.log`、`stderr.log`；设置入口的错误记录在 `settings.stderr.log`。
 
 ## 使用须知

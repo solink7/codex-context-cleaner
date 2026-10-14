@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-[INPUT]: README.md、默认配置、设置页、固定运行环境清单与平台入口。
+[INPUT]: README.md、默认配置、设置页与自包含平台入口。
 [OUTPUT]: dist/ 内独立的 macOS 与 Windows 发布压缩包。
 [POS]: 纯构建入口；只写 dist/，不修改源码或读取本地私有配置。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
@@ -72,6 +72,13 @@ def build_mac(folder, guide, config):
     (settings / 'MacOS').mkdir(parents=True)
     (settings / 'Info.plist').write_bytes((source / 'settings.plist').read_bytes())
     (settings / 'MacOS' / 'launcher').write_bytes((source / 'settings.sh').read_bytes())
+    # 设置应用独立携带启动资源，下载隔离不保证邻居应用可见。
+    for name in ('runtime.sh', 'status-ui.sh', 'progress.js'):
+        (settings / 'MacOS' / name).write_bytes((app / 'MacOS' / name).read_bytes())
+    (settings / 'Resources').mkdir()
+    for name in ('settings.py', 'control.py', 'sanitizer.py', 'runtime-manifest.tsv'):
+        (settings / 'Resources' / name).write_bytes((ROOT / name).read_bytes())
+    shutil.copytree(ROOT / 'ui', settings / 'Resources' / 'ui', ignore=shutil.ignore_patterns(*IGNORED))
     return {'config.json': '启动代理.app/Contents/Resources/config.json'}
 
 

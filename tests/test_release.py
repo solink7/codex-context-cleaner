@@ -1,6 +1,6 @@
 """
 [INPUT]: 单一源码发布器、默认配置与干净检出的临时夹具。
-[OUTPUT]: 默认配置隔离、双端打包、文档生成与纯构建的回归结果。
+[OUTPUT]: 自包含应用、默认配置隔离与双端纯构建回归。
 [POS]: 发布回归，只写临时目录，不修改用户运行记录。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 """
@@ -56,6 +56,14 @@ class ReleaseTests(unittest.TestCase):
             self.assertIn('codex-context-cleaner/启动代理.app/Contents/MacOS/launcher', names)
             self.assertIn('codex-context-cleaner/设置代理.app/Contents/MacOS/launcher', names)
             self.assertIn('codex-context-cleaner/启动代理.app/Contents/Resources/ui/index.html', names)
+            for name in ('MacOS/runtime.sh', 'MacOS/status-ui.sh', 'MacOS/progress.js',
+                         'Resources/settings.py', 'Resources/control.py', 'Resources/sanitizer.py',
+                         'Resources/runtime-manifest.tsv', 'Resources/ui/index.html',
+                         'Resources/ui/settings.js', 'Resources/ui/settings.css'):
+                setting = 'codex-context-cleaner/设置代理.app/Contents/' + name
+                launch = 'codex-context-cleaner/启动代理.app/Contents/' + name
+                self.assertEqual(package.read(setting), package.read(launch))
+            self.assertNotIn('codex-context-cleaner/设置代理.app/Contents/Resources/config.json', names)
             self.assertFalse(any('windows/' in name or name.endswith('.cmd') for name in names))
             self.assertIsNone(package.testzip())
         self.assertEqual((self.root / 'config.json').read_bytes(), self.config)
