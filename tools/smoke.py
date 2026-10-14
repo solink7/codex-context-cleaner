@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-[INPUT]: 当前系统的 ZIP 发布包，以及可选的缺环境安装场景。
+[INPUT]: 当前系统 ZIP 与缺环境场景；隔离子进程显式启用 UTF-8。
 [OUTPUT]: 解压、清洗转发、设置鉴权、端口切换与启停的系统级验收。
 [POS]: CI 发布闸门；使用临时端口、服务标签与目录，不碰用户运行记录。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
@@ -79,7 +79,7 @@ def start_settings(package, temporary, environment, label):
     script = (package / '启动代理.app/Contents/Resources/settings.py'
               if sys.platform == 'darwin' else package / 'settings.py')
     state_dir = temporary / 'settings-state'
-    command = [sys.executable, '-I', str(script), '--root', str(package),
+    command = [sys.executable, '-I', '-X', 'utf8', str(script), '--root', str(package),
                '--config', str(package / 'config.json'), '--state-dir', str(state_dir), '--no-browser']
     if label:
         command += ['--service-dir', str(temporary / 'service'), '--service-label', label]
