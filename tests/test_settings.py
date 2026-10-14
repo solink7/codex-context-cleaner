@@ -1,6 +1,6 @@
 """
 [INPUT]: 共用配置控制层、本机设置服务与临时文件和 HTTP 夹具。
-[OUTPUT]: 空配置、原子保存、失败恢复、端口冲突和设置接口鉴权回归。
+[OUTPUT]: 后台进程输出继承、配置恢复、端口冲突与设置鉴权回归。
 [POS]: 设置功能测试；不调用用户的代理，不连接真实上游。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 """
@@ -10,8 +10,11 @@ import json
 import os
 from pathlib import Path
 import socket
+import subprocess
+import sys
 import tempfile
 import threading
+import time
 import unittest
 from unittest.mock import Mock, patch
 
@@ -136,6 +139,42 @@ class ControllerTests(unittest.TestCase):
         self.controller.status.return_value = self.running.copy()
         self.assertTrue(self.controller.start()['status']['running'])
         self.controller.invoke.assert_not_called()
+
+    def test_launcher_returns_while_background_process_keeps_output_handles(self):
+        release = self.root / 'release-child'
+        finished = self.root / 'child-finished'
+        child_script = """import sys, time
+from pathlib import Path
+release, finished = map(Path, sys.argv[1:])
+for attempt in range(100):
+    if release.exists():
+        break
+    time.sleep(.1)
+finished.touch()
+"""
+        launcher = f"""import subprocess, sys
+subprocess.Popen([sys.executable, '-c', {child_script!r}, {str(release)!r}, {str(finished)!r}])
+print('入口已完成', flush=True)
+sys.stderr.buffer.write(b'\\xff')
+sys.stderr.flush()
+sys.exit(7)
+"""
+        try:
+            result = self.controller.run([sys.executable, '-X', 'utf8', '-c', launcher], timeout=3)
+            self.assertEqual(result.returncode, 7)
+            self.assertEqual(result.stdout.strip(), '入口已完成')
+            self.assertEqual(result.stderr, '\ufffd')
+            self.assertFalse(finished.exists(), '入口等待了后台进程退出')
+        finally:
+            release.touch()
+            # 等待夹具退出后再删除目录，避免遗留后台测试进程。
+            deadline = time.monotonic() + 3
+            while not finished.exists() and time.monotonic() < deadline:
+                time.sleep(.05)
+
+    def test_control_command_timeout_is_preserved(self):
+        with self.assertRaises(subprocess.TimeoutExpired):
+            self.controller.run([sys.executable, '-c', 'import time; time.sleep(10)'], timeout=.2)
 
 
 class SettingsHttpTests(unittest.TestCase):

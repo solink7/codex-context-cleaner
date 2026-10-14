@@ -1,7 +1,7 @@
 """
-[INPUT]: sanitizer 配置校验、平台启停入口与 codex-context-cleaner 健康响应。
+[INPUT]: sanitizer 配置校验、平台启停入口、临时输出文件与健康响应。
 [OUTPUT]: ServiceController 配置读写、状态核验与启停操作。
-[POS]: 设置页与原生入口之间的控制层；复用平台进程身份和环境安装。
+[POS]: 设置控制层；等待入口退出，不等待后台进程关闭输出。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 """
 import base64
@@ -70,8 +70,15 @@ class ServiceController:
     def run(self, command, timeout=20):
         options = {'creationflags': subprocess.CREATE_NO_WINDOW} if sys.platform == 'win32' else {}
         environment = {**os.environ, 'CODEX_CONTEXT_CLEANER_HEADLESS': '1'}
-        return subprocess.run(command, env=environment, capture_output=True, text=True,
-                              encoding='utf-8', errors='replace', timeout=timeout, **options)
+        # 后台进程会继承入口的输出句柄。文件读取不依赖管道 EOF。
+        with tempfile.TemporaryFile() as output, tempfile.TemporaryFile() as errors:
+            result = subprocess.run(command, env=environment, stdout=output, stderr=errors,
+                                    timeout=timeout, **options)
+            output.seek(0)
+            errors.seek(0)
+            result.stdout = output.read().decode('utf-8', errors='replace')
+            result.stderr = errors.read().decode('utf-8', errors='replace')
+            return result
 
     def powershell(self, script):
         encoded = base64.b64encode(script.encode('utf-16le')).decode('ascii')
