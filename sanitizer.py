@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 [INPUT]: 标准库 HTTP、UTF-8 配置与客户端携带的请求头和 Responses JSON。
-[OUTPUT]: 共用配置校验、Responses/SSE 转发、/health 与启动前检查。
+[OUTPUT]: 共用配置校验、Responses/SSE 转发与 codex-context-cleaner 健康标识。
 [POS]: 双端共用的代理源码；启动器负责进程，本文件校验配置并清洗历史。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 """
@@ -136,7 +136,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == '/health':
-            health = {'service': 'relay-sanitizer', 'status': 'ok', 'pid': os.getpid()}
+            health = {'service': 'codex-context-cleaner', 'status': 'ok', 'pid': os.getpid()}
             if hasattr(self.server, 'request_lock'):
                 with self.server.request_lock:
                     health['active_requests'] = self.server.active_requests

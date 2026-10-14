@@ -62,6 +62,8 @@ API Key 继续填写在客户端中，无需交给设置页。缺少 Python 时�
 - **修改配置**：在设置页修改并保存。代理运行时，“保存并应用”会重新启动代理；聊天回复尚未结束时，请等待后再操作。
 - **更新版本**：先停止旧代理，解压新版本，再将原来的配置填入新版本。
 
+新版本使用独立的运行目录，旧目录和日志会保留。macOS 的停止入口也可退出旧版代理。
+
 关闭客户端或设置页不会停止代理。再次打开设置入口会回到同一个设置服务。重复启动不会创建第二个代理进程。运行期间请勿移动或删除工具文件夹。
 
 ## 配置说明
@@ -105,7 +107,7 @@ API Key 继续填写在客户端中，无需交给设置页。缺少 Python 时�
 
 ### 去哪里查看错误日志
 
-- **macOS**：在 Finder 按 `Command + Shift + G`，输入 `~/Library/Application Support/Relay-Sanitizer/`，查看 `launcher.log`、`stdout.log`、`stderr.log`；设置入口的错误记录在 `settings.log`。
+- **macOS**：在 Finder 按 `Command + Shift + G`，输入 `~/Library/Application Support/codex-context-cleaner/`，查看 `launcher.log`、`stdout.log`、`stderr.log`；设置入口的错误记录在 `settings.log`。
 - **Windows**：打开解压目录中的 `.runtime` 文件夹，查看 `stdout.log`、`stderr.log`；设置入口的错误记录在 `settings.stderr.log`。
 
 ## 使用须知

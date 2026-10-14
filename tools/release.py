@@ -58,6 +58,8 @@ def build_mac(folder, guide, config):
     stop = folder / '停止代理.app' / 'Contents' / 'MacOS'
     (app / 'Resources').mkdir(parents=True, exist_ok=True)
     (app / 'MacOS' / 'runtime.sh').write_bytes((source / 'runtime.sh').read_bytes())
+    (app / 'MacOS' / 'legacy.sh').write_bytes((source / 'legacy.sh').read_bytes())
+    (stop / 'legacy.sh').write_bytes((source / 'legacy.sh').read_bytes())
     for name in ('runtime-manifest.tsv', 'sanitizer.py'):
         (app / 'Resources' / name).write_bytes((ROOT / name).read_bytes())
     for name in ('settings.py', 'control.py'):

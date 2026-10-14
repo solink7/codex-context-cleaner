@@ -18,7 +18,7 @@ try {
         exit 0
     }
     $state = Get-Content -LiteralPath $stateFile -Raw -Encoding UTF8 | ConvertFrom-Json
-    $running = Get-RelayProcess $state
+    $running = Get-CleanerProcess $state
     if ($running) {
         $running.Kill()
         if (-not $running.WaitForExit(5000)) { throw '代理尚未退出，请稍后重试。' }

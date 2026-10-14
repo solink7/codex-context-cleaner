@@ -44,7 +44,7 @@ console.log(JSON.stringify(context.parseStatus(require('node:fs').readFileSync(0
 
     @unittest.skipUnless(Path('/bin/zsh').exists(), '需要 zsh 检查 Mac 写入协议')
     def test_shell_output_round_trips_without_partial_state(self):
-        with tempfile.TemporaryDirectory(prefix='relay 提示 ') as directory:
+        with tempfile.TemporaryDirectory(prefix='cleaner 提示 ') as directory:
             root = Path(directory)
             state = root / 'status'
             message = '代理已在运行：127.0.0.1:8787\n不会重复启动。'
@@ -63,7 +63,7 @@ ui_write success {shlex.quote(message)}
                          '原生窗口需本地桌面会话；CI 验证无窗口启动流程')
 class NativeWindowTests(unittest.TestCase):
     def test_same_process_retains_error_then_closes_after_success(self):
-        with tempfile.TemporaryDirectory(prefix='relay 原生提示 ') as directory:
+        with tempfile.TemporaryDirectory(prefix='cleaner 原生提示 ') as directory:
             state = Path(directory) / 'status'
             state.write_text('progress\n[测试] 正在验证提示窗口，请稍候…', encoding='utf-8')
             process = subprocess.Popen(['/usr/bin/osascript', '-l', 'JavaScript',

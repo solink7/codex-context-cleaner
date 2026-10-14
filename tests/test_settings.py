@@ -13,7 +13,7 @@ import socket
 import tempfile
 import threading
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from control import DEFAULT_CONFIG, ServiceController, write_config
 from sanitizer import load_config
@@ -139,6 +139,11 @@ class ControllerTests(unittest.TestCase):
 
 
 class SettingsHttpTests(unittest.TestCase):
+    def test_startup_does_not_wait_for_dns_resolution(self):
+        with patch('socket.getfqdn', side_effect=AssertionError('不应查询 DNS')):
+            server = SettingsServer(self.controller)
+            server.server_close()
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix='设置接口测试 ')
         self.addCleanup(self.temp.cleanup)

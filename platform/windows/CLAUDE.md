@@ -9,6 +9,6 @@ start.ps1: 从项目根目录读取配置和代理，核验环境并隐藏启动
 stop.ps1: 核对根目录运行记录中的 PID 与启动时间，仅停止身份匹配的代理。
 control.ps1: 原命令窗口显示结果，核验进程身份并直连本机健康端点。
 runtime.ps1: 检查标准库，使用 .NET SHA-256 校验官方包并安装专用 Python。
-运行记录位于项目根目录 .runtime/，移动脚本不改变旧记录路径。
-安装目录位于 %LOCALAPPDATA%\Relay-Sanitizer\python，不修改 PATH。
+运行记录位于解压根目录 .runtime/，使用 PID 和启动时间核验身份。
+安装目录位于 %LOCALAPPDATA%\codex-context-cleaner\python，不修改 PATH。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md

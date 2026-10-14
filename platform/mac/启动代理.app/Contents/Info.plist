@@ -1,11 +1,17 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!--
+[INPUT]: MacOS/launcher 的启动入口。
+[OUTPUT]: codex-context-cleaner 应用身份与后台窗口配置。
+[POS]: Mac 启动应用的元信息，不声明开机自启。
+[PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+-->
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
 	<key>CFBundleExecutable</key>
 	<string>launcher</string>
 	<key>CFBundleIdentifier</key>
-	<string>local.relay-sanitizer.start</string>
+	<string>local.codex-context-cleaner.start</string>
 	<key>CFBundleName</key>
 	<string>启动代理</string>
 	<key>CFBundlePackageType</key>

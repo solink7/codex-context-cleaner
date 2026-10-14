@@ -71,7 +71,7 @@ function run(argv) {
     }
 
     ObjC.registerSubclass({
-        name: 'RelayStatusDelegate',
+        name: 'CleanerStatusDelegate',
         methods: {
             'close:': {types: ['void', ['id']], implementation: function () { application.terminate(null); }},
             'tick:': {
@@ -95,7 +95,7 @@ function run(argv) {
             }
         }
     });
-    var delegate = $.RelayStatusDelegate.alloc.init;
+    var delegate = $.CleanerStatusDelegate.alloc.init;
     closeButton.target = delegate;
     closeButton.action = 'close:';
     if (directResult) update({phase: argv[1], message: argv[2]});

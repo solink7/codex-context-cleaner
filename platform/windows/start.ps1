@@ -18,7 +18,7 @@ try {
     catch { throw '正在启动或停止代理，请等待当前启动窗口完成后重试。' }
     if (Test-Path -LiteralPath $stateFile) {
         $state = Get-Content -LiteralPath $stateFile -Raw -Encoding UTF8 | ConvertFrom-Json
-        $existing = Get-RelayProcess $state
+        $existing = Get-CleanerProcess $state
         if ($existing) {
             $activePort = $state.port
             if (-not $activePort) {
@@ -26,7 +26,7 @@ try {
                 $config = Get-Content -LiteralPath (Join-Path $projectRoot 'config.json') -Raw -Encoding UTF8 | ConvertFrom-Json
                 $activePort = $config.port
             }
-            if (-not (Test-RelayHealth $activePort $existing.Id 1500)) {
+            if (-not (Test-CleanerHealth $activePort $existing.Id 1500)) {
                 throw '已有代理未通过健康检查。请双击 stop.cmd，再双击 start.cmd。'
             }
             Show-Status "代理已在运行：127.0.0.1:$activePort"
@@ -34,8 +34,8 @@ try {
         }
         Remove-Item -LiteralPath $stateFile
     }
-    $runtimeRoot = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'Relay-Sanitizer'
-    $pythonExe = Get-RequiredRelayPython (Join-Path $projectRoot 'runtime-manifest.tsv') $runtimeRoot
+    $runtimeRoot = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'codex-context-cleaner'
+    $pythonExe = Get-RequiredCleanerPython (Join-Path $projectRoot 'runtime-manifest.tsv') $runtimeRoot
     Write-Host '[4/5] 正在检查代理配置…'
     # 与代理共用配置校验，启动前即可指出错误字段。
     Push-Location -LiteralPath $projectRoot
@@ -56,7 +56,7 @@ try {
         Start-Sleep -Milliseconds 200
         $child.Refresh()
         if ($child.HasExited) { throw '代理启动失败。请查看 .runtime 下的 stdout.log 和 stderr.log。' }
-        if (Test-RelayHealth $port $child.Id) { $ready = $true; break }
+        if (Test-CleanerHealth $port $child.Id) { $ready = $true; break }
     }
     if (-not $ready) { throw '启动检查超时。请查看 .runtime 下的日志。' }
     @{ processId = $child.Id; startedTicks = $child.StartTime.ToUniversalTime().Ticks.ToString(); port = $port } | ConvertTo-Json | Set-Content -LiteralPath $stateFile -Encoding UTF8

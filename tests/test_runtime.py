@@ -20,7 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 @unittest.skipUnless(Path('/bin/zsh').exists(), '需要 zsh 执行 Mac 分支测试')
 class RuntimeTests(unittest.TestCase):
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory(prefix="relay 环境 '测试'-")
+        self.temp = tempfile.TemporaryDirectory(prefix="cleaner 环境 '测试'-")
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
         self.destination = self.root / '运行环境'

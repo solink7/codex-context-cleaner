@@ -14,7 +14,7 @@ ui_write() {
  print -rn -- "$phase"$'\n'"$message" > "$staging" && mv -f "$staging" "$STATUS_FILE"
 }
 ui_begin() {
- [[ "${RELAY_HEADLESS:-0}" != 1 ]] || { print -r -- "$1"; return 0; }
+ [[ "${CODEX_CONTEXT_CLEANER_HEADLESS:-0}" != 1 ]] || { print -r -- "$1"; return 0; }
  STATUS_FILE=$(mktemp "$SERVICE/status.XXXXXX") || return 1
  rm -f "$UI_ACTIVATE"
  ui_write progress "$1" || return 1
@@ -28,11 +28,11 @@ ui_cleanup() {
 }
 show_progress() {
  print -r -- "$1"
- [[ "${RELAY_HEADLESS:-0}" != 1 ]] || return 0
+ [[ "${CODEX_CONTEXT_CLEANER_HEADLESS:-0}" != 1 ]] || return 0
  ui_write progress "$1"
 }
 notice() {
- [[ "${RELAY_HEADLESS:-0}" != 1 ]] || { print -r -- "$1"; return 0; }
+ [[ "${CODEX_CONTEXT_CLEANER_HEADLESS:-0}" != 1 ]] || { print -r -- "$1"; return 0; }
  local phase=success
  [[ "$2" != error ]] || phase=error
  print -r -- "$1"

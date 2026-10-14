@@ -1,5 +1,5 @@
 """
-[INPUT]: sanitizer 的配置校验、平台启停入口与本机健康响应。
+[INPUT]: sanitizer 配置校验、平台启停入口与 codex-context-cleaner 健康响应。
 [OUTPUT]: ServiceController 配置读写、状态核验与启停操作。
 [POS]: 设置页与原生入口之间的控制层；复用平台进程身份和环境安装。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
@@ -51,10 +51,10 @@ def ps_quote(value):
 
 
 class ServiceController:
-    def __init__(self, root, config_path=None, service_dir=None, label='local.relay-sanitizer'):
+    def __init__(self, root, config_path=None, service_dir=None, label='local.codex-context-cleaner'):
         self.root = Path(root).resolve()
         self.config_path = Path(config_path or self.root / 'config.json')
-        self.service_dir = Path(service_dir or Path.home() / 'Library/Application Support/Relay-Sanitizer')
+        self.service_dir = Path(service_dir or Path.home() / 'Library/Application Support/codex-context-cleaner')
         self.label = label
         self.lock = threading.Lock()
 
@@ -69,7 +69,7 @@ class ServiceController:
 
     def run(self, command, timeout=20):
         options = {'creationflags': subprocess.CREATE_NO_WINDOW} if sys.platform == 'win32' else {}
-        environment = {**os.environ, 'RELAY_HEADLESS': '1'}
+        environment = {**os.environ, 'CODEX_CONTEXT_CLEANER_HEADLESS': '1'}
         return subprocess.run(command, env=environment, capture_output=True, text=True,
                               encoding='utf-8', errors='replace', timeout=timeout, **options)
 
@@ -93,7 +93,7 @@ class ServiceController:
 . {ps_quote(control)}
 if (Test-Path -LiteralPath {ps_quote(record)}) {{
     $state = Get-Content -LiteralPath {ps_quote(record)} -Raw -Encoding UTF8 | ConvertFrom-Json
-    $process = Get-RelayProcess $state
+    $process = Get-CleanerProcess $state
     if ($process) {{ @{{ pid = $process.Id; port = $state.port }} | ConvertTo-Json -Compress }}
 }}
 """
@@ -113,7 +113,7 @@ if (Test-Path -LiteralPath {ps_quote(record)}) {{
             connection.request('GET', '/health')
             response = connection.getresponse()
             health = json.loads(response.read(4096))
-            state['healthy'] = (response.status == 200 and health.get('service') == 'relay-sanitizer'
+            state['healthy'] = (response.status == 200 and health.get('service') == 'codex-context-cleaner'
                                 and health.get('pid') == identity['pid'])
             if state['healthy']:
                 state['active_requests'] = health.get('active_requests', 0)

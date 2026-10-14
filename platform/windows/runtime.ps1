@@ -4,7 +4,7 @@
 # [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 
 # ---- 环境探测 ----
-function Test-RelayPython([string]$Executable, [string]$Prefix = '') {
+function Test-CleanerPython([string]$Executable, [string]$Prefix = '') {
     if (-not (Test-Path -LiteralPath $Executable -PathType Leaf)) { return $null }
     $process = $null
     try {
@@ -31,15 +31,15 @@ function Test-RelayPython([string]$Executable, [string]$Prefix = '') {
     return $null
 }
 
-function Find-RelayPython([string]$PrivateExecutable) {
-    $found = Test-RelayPython $PrivateExecutable
+function Find-CleanerPython([string]$PrivateExecutable) {
+    $found = Test-CleanerPython $PrivateExecutable
     if ($found) { return $found }
     foreach ($name in @('py.exe', 'python.exe', 'python3.exe')) {
         $command = Get-Command $name -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
         if (-not $command -or $command.Source -like '*\Microsoft\WindowsApps\*') { continue }
         $prefix = ''
         if ($name -eq 'py.exe') { $prefix = '-3 ' }
-        $found = Test-RelayPython $command.Source $prefix
+        $found = Test-CleanerPython $command.Source $prefix
         if ($found) { return $found }
     }
     # 官方安装器不一定加入 PATH；按 Python 注册位置继续查找。
@@ -49,7 +49,7 @@ function Find-RelayPython([string]$PrivateExecutable) {
             if (-not $key) { continue }
             $candidate = $key.GetValue('ExecutablePath')
             if (-not $candidate) { $candidate = Join-Path $key.GetValue('') 'python.exe' }
-            $found = Test-RelayPython $candidate
+            $found = Test-CleanerPython $candidate
             if ($found) { return $found }
         }
     }
@@ -57,7 +57,7 @@ function Find-RelayPython([string]$PrivateExecutable) {
 }
 
 # ---- 下载与校验 ----
-function Get-RelayRuntimeEntry([string]$Manifest, [string]$Architecture) {
+function Get-CleanerRuntimeEntry([string]$Manifest, [string]$Architecture) {
     $key = switch ($Architecture.ToUpperInvariant()) {
         'AMD64' { 'windows-x64' }
         'X86' { 'windows-x86' }
@@ -72,7 +72,7 @@ function Get-RelayRuntimeEntry([string]$Manifest, [string]$Architecture) {
     return $entries[0]
 }
 
-function Save-RelayRuntime([string]$Url, [string]$Destination) {
+function Save-CleanerRuntime([string]$Url, [string]$Destination) {
     [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
     $response = $null
     $inputStream = $null
@@ -105,7 +105,7 @@ function Save-RelayRuntime([string]$Url, [string]$Destination) {
     }
 }
 
-function Get-RelaySha256([string]$Path) {
+function Get-CleanerSha256([string]$Path) {
     # 使用 .NET 内置实现，不依赖 PowerShell 模块自动加载。
     $stream = $null
     $algorithm = [Security.Cryptography.SHA256]::Create()
@@ -118,7 +118,7 @@ function Get-RelaySha256([string]$Path) {
     }
 }
 
-function Install-RelayPython($Entry, [string]$RuntimeRoot) {
+function Install-CleanerPython($Entry, [string]$RuntimeRoot) {
     $stage = Join-Path $RuntimeRoot ('install-' + [Guid]::NewGuid().ToString('N'))
     $destination = Join-Path $RuntimeRoot 'python'
     $previous = Join-Path $stage 'previous-python'
@@ -127,22 +127,22 @@ function Install-RelayPython($Entry, [string]$RuntimeRoot) {
         New-Item -ItemType Directory -Path $stage | Out-Null
         Write-Host "`n[2/5] 未找到可用的 Python，正在下载专用运行环境。首次启动需要联网。"
         $archive = Join-Path $stage 'python.zip'
-        Save-RelayRuntime $Entry.url $archive
+        Save-CleanerRuntime $Entry.url $archive
         Write-Host '[3/5] 下载完成，正在校验并安装运行环境…'
-        if ((Get-RelaySha256 $archive) -ne $Entry.sha256) {
+        if ((Get-CleanerSha256 $archive) -ne $Entry.sha256) {
             throw '下载文件校验失败，已取消安装。请检查网络后重新启动。'
         }
         try {
             Add-Type -AssemblyName System.IO.Compression.FileSystem
             [IO.Compression.ZipFile]::ExtractToDirectory($archive, $newRuntime)
         } catch { throw '运行环境解压失败。请检查剩余磁盘空间和安全软件提示。' }
-        if (-not (Test-RelayPython (Join-Path $newRuntime 'python.exe'))) {
+        if (-not (Test-CleanerPython (Join-Path $newRuntime 'python.exe'))) {
             throw '新运行环境未通过检查。请确认系统为 Windows 10/11，且未被安全软件拦截。'
         }
         if (Test-Path -LiteralPath $destination) { Move-Item -LiteralPath $destination -Destination $previous }
         try {
             Move-Item -LiteralPath $newRuntime -Destination $destination
-            $result = Test-RelayPython (Join-Path $destination 'python.exe')
+            $result = Test-CleanerPython (Join-Path $destination 'python.exe')
             if (-not $result) { throw '安装后的运行环境未通过检查。' }
             return $result
         } catch {
@@ -155,10 +155,10 @@ function Install-RelayPython($Entry, [string]$RuntimeRoot) {
     }
 }
 
-function Get-RequiredRelayPython([string]$Manifest, [string]$RuntimeRoot) {
+function Get-RequiredCleanerPython([string]$Manifest, [string]$RuntimeRoot) {
     Write-Host '[1/5] 正在检查本机运行环境…'
     $executable = Join-Path $RuntimeRoot 'python\python.exe'
-    $found = Find-RelayPython $executable
+    $found = Find-CleanerPython $executable
     if ($found) { Write-Host '运行环境已就绪，无需安装。'; return $found }
     if ([Environment]::OSVersion.Version.Major -lt 10) { throw '自动安装需要 Windows 10 或更新版本。' }
     New-Item -ItemType Directory -Force -Path $RuntimeRoot | Out-Null
@@ -166,12 +166,12 @@ function Get-RequiredRelayPython([string]$Manifest, [string]$RuntimeRoot) {
     try {
         try { $lock = [IO.File]::Open((Join-Path $RuntimeRoot 'install.lock'), 'OpenOrCreate', 'ReadWrite', 'None') }
         catch { throw '另一个启动窗口正在安装运行环境，请等待完成后重试。' }
-        $found = Test-RelayPython $executable
+        $found = Test-CleanerPython $executable
         if ($found) { return $found }
         $architecture = $env:PROCESSOR_ARCHITEW6432
         if (-not $architecture) { $architecture = $env:PROCESSOR_ARCHITECTURE }
-        $entry = Get-RelayRuntimeEntry $Manifest $architecture
-        return (Install-RelayPython $entry $RuntimeRoot)
+        $entry = Get-CleanerRuntimeEntry $Manifest $architecture
+        return (Install-CleanerPython $entry $RuntimeRoot)
     } finally {
         if ($lock) { $lock.Dispose() }
     }

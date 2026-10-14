@@ -274,7 +274,7 @@ class ForwardingTests(unittest.TestCase):
         self.client.request('GET', '/health')
         response = self.client.getresponse()
         health = json.loads(response.read())
-        self.assertEqual(health, {'service': 'relay-sanitizer', 'status': 'ok', 'pid': os.getpid(), 'active_requests': 0})
+        self.assertEqual(health, {'service': 'codex-context-cleaner', 'status': 'ok', 'pid': os.getpid(), 'active_requests': 0})
 
     def test_error_reply_tolerates_closed_client(self):
         handler = sanitizer.Handler.__new__(sanitizer.Handler)

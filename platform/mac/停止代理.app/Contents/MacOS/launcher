@@ -1,11 +1,11 @@
 #!/bin/zsh
-# [INPUT]: 服务标签、启停互斥锁与同应用包 status-ui.sh。
+# [INPUT]: 服务标签、启停互斥锁、legacy.sh 与 status-ui.sh。
 # [OUTPUT]: 核验代理退出，在唯一状态窗口显示停止结果。
 # [POS]: Mac 停止编排；共用启动提示视图，不按进程名批量停止。
 # [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 APP_CONTENTS="${0:A:h:h}"
-LABEL=local.relay-sanitizer
-SERVICE="$HOME/Library/Application Support/Relay-Sanitizer"
+LABEL=local.codex-context-cleaner
+SERVICE="$HOME/Library/Application Support/codex-context-cleaner"
 umask 077
 source "$APP_CONTENTS/MacOS/status-ui.sh" || exit 1
 mkdir -p "$SERVICE" || { notice '无法创建后台运行目录。' error; exit 1; }
@@ -19,6 +19,8 @@ cleanup() { ui_cleanup; rm -f "$SERVICE/start.lock"; }
 trap cleanup EXIT
 trap 'exit 1' HUP INT TERM
 ui_begin '正在停止代理…' || { notice '无法创建停止状态文件。' error; exit 1; }
+source "$APP_CONTENTS/MacOS/legacy.sh" || { notice '停止文件不完整，请重新解压工具。' error; exit 1; }
+stop_previous_service || exit 1
 SERVICE_PID=$(/bin/launchctl list "$LABEL" 2>/dev/null | /usr/bin/awk '/"PID"/ {gsub(";", "", $3); print $3}')
 /bin/launchctl remove "$LABEL" 2>/dev/null
 MESSAGE='代理已停止。'

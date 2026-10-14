@@ -11,10 +11,12 @@ __pycache__/
 /停止代理.app
 /README.html
 /platform/mac/启动代理.app/Contents/MacOS/runtime.sh
+/platform/mac/启动代理.app/Contents/MacOS/legacy.sh
 /platform/mac/启动代理.app/Contents/Resources/config.json
 /platform/mac/启动代理.app/Contents/Resources/sanitizer.py
 /platform/mac/启动代理.app/Contents/Resources/runtime-manifest.tsv
 /platform/mac/停止代理.app/Contents/MacOS/progress.js
 /platform/mac/停止代理.app/Contents/MacOS/status-ui.sh
+/platform/mac/停止代理.app/Contents/MacOS/legacy.sh
 .env
 .env.*

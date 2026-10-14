@@ -60,9 +60,9 @@ def powershell_quote(value):
     return "'" + str(value).replace("'", "''") + "'"
 
 
-def settings_request(url, path, payload=None, authenticated=True):
+def settings_request(url, path, payload=None, authenticated=True, timeout=30):
     target = urlsplit(url)
-    connection = http.client.HTTPConnection(target.hostname, target.port, timeout=30)
+    connection = http.client.HTTPConnection(target.hostname, target.port, timeout=timeout)
     headers = {'Content-Type': 'application/json'}
     if authenticated:
         headers['X-Settings-Token'] = target.fragment
@@ -83,37 +83,44 @@ def start_settings(package, temporary, environment, label):
                '--config', str(package / 'config.json'), '--state-dir', str(state_dir), '--no-browser']
     if label:
         command += ['--service-dir', str(temporary / 'service'), '--service-label', label]
-    process = subprocess.Popen(command, env=environment, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    error_log = temporary / 'settings.stderr.log'
+    with error_log.open('wb') as stream:
+        process = subprocess.Popen(command, env=environment, stdout=subprocess.DEVNULL, stderr=stream)
     try:
-        deadline = time.monotonic() + 8
+        deadline = time.monotonic() + 30
         while time.monotonic() < deadline:
             records = list(state_dir.glob('settings-*.json'))
             if records:
-                record = json.loads(records[0].read_text())
-                if settings_request(record['url'], '/api/session')[0] == 200:
-                    return process, record['url'], command
+                try:
+                    record = json.loads(records[0].read_text(encoding='utf-8'))
+                    status, session = settings_request(record['url'], '/api/session', timeout=1)
+                    if status == 200 and session.get('pid') == process.pid:
+                        return process, record['url'], command
+                except (OSError, ValueError, http.client.HTTPException):
+                    pass
             if process.poll() is not None:
-                raise AssertionError('设置服务启动失败：' + process.stderr.read().decode('utf-8', errors='replace'))
+                raise AssertionError('设置服务启动失败：' + error_log.read_text(encoding='utf-8', errors='replace'))
             time.sleep(.1)
         raise AssertionError('设置服务未在规定时间内启动')
     except Exception:
         process.terminate()
         process.wait(5)
-        process.stderr.close()
         raise
 
 
 def commands(package, temporary, bootstrap):
     environment = os.environ.copy()
-    environment['RELAY_HEADLESS'] = '1'
+    environment['CODEX_CONTEXT_CLEANER_HEADLESS'] = '1'
     label = None
     if sys.platform == 'darwin':
         label = 'local.codex-context-cleaner-test-' + uuid.uuid4().hex[:8]
         for name in ('启动代理.app', '停止代理.app'):
+            legacy = package / name / 'Contents/MacOS/legacy.sh'
+            legacy.write_text(legacy.read_text().replace('local.relay-sanitizer', label + '-previous'), encoding='utf-8')
             script = package / name / 'Contents/MacOS/launcher'
             text = script.read_text(encoding='utf-8')
-            text = text.replace('LABEL=local.relay-sanitizer', 'LABEL=' + label)
-            text = text.replace('SERVICE="$HOME/Library/Application Support/Relay-Sanitizer"',
+            text = text.replace('LABEL=local.codex-context-cleaner', 'LABEL=' + label)
+            text = text.replace('SERVICE="$HOME/Library/Application Support/codex-context-cleaner"',
                                 'SERVICE="' + str(temporary / 'service') + '"')
             if bootstrap and name == '启动代理.app':
                 text = re.sub(r'^PYTHON_CANDIDATES=.*$', 'PYTHON_CANDIDATES=()', text, flags=re.M)
@@ -132,7 +139,7 @@ def commands(package, temporary, bootstrap):
         if bootstrap:
             runtime = scripts / 'runtime.ps1'
             text = runtime.read_text(encoding='utf-8-sig')
-            text += '\nfunction Find-RelayPython([string]$PrivateExecutable) { return (Test-RelayPython $PrivateExecutable) }\n'
+            text += '\nfunction Find-CleanerPython([string]$PrivateExecutable) { return (Test-CleanerPython $PrivateExecutable) }\n'
             runtime.write_bytes(b'\xef\xbb\xbf' + text.replace('\n', '\r\n').encode('utf-8'))
         prefix = ['powershell.exe', '-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File']
         start, stop = prefix + [str(start_script)], prefix + [str(scripts / 'stop.ps1')]
@@ -167,7 +174,7 @@ def run(archive, bootstrap=False):
         try:
             subprocess.run(start, check=True, env=environment, timeout=420)
             first = health(port)
-            assert first['service'] == 'relay-sanitizer'
+            assert first['service'] == 'codex-context-cleaner'
             client = http.client.HTTPConnection('127.0.0.1', port, timeout=3)
             try:
                 client.request('POST', '/v1/responses', json.dumps({'input': [
@@ -218,7 +225,6 @@ def run(archive, bootstrap=False):
             if settings_process:
                 settings_process.terminate()
                 settings_process.wait(5)
-                settings_process.stderr.close()
             subprocess.run(stop, env=environment, timeout=30, check=False,
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             if label:

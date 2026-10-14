@@ -26,7 +26,7 @@ try {
             $response = $request.GetResponse()
             $reader = [IO.StreamReader]::new($response.GetResponseStream(), [Text.Encoding]::UTF8)
             $session = $reader.ReadToEnd() | ConvertFrom-Json
-            if ($session.service -eq 'cleaner-settings' -and $session.pid -eq $saved.pid) {
+            if ($session.service -eq 'codex-context-cleaner.settings' -and $session.pid -eq $saved.pid) {
                 Start-Process -FilePath $saved.url
                 Show-Status '设置已在浏览器打开。'
                 exit 0
@@ -36,8 +36,8 @@ try {
             if ($response) { $response.Dispose() }
         }
     }
-    $runtimeRoot = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'Relay-Sanitizer'
-    $pythonExe = Get-RequiredRelayPython (Join-Path $projectRoot 'runtime-manifest.tsv') $runtimeRoot
+    $runtimeRoot = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'codex-context-cleaner'
+    $pythonExe = Get-RequiredCleanerPython (Join-Path $projectRoot 'runtime-manifest.tsv') $runtimeRoot
     $settingsFile = Join-Path $projectRoot 'settings.py'
     $arguments = @('-I', '-X', 'utf8', ('"' + $settingsFile + '"'), '--root', ('"' + $projectRoot + '"'))
     Start-Process -FilePath $pythonExe -ArgumentList $arguments -WorkingDirectory $projectRoot -WindowStyle Hidden -RedirectStandardOutput (Join-Path $runtimeDir 'settings.stdout.log') -RedirectStandardError (Join-Path $runtimeDir 'settings.stderr.log') | Out-Null

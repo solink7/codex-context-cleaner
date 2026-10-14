@@ -20,7 +20,7 @@ function Show-Status([string]$Message, [switch]$Failure) {
 }
 
 # ---- 进程身份与健康检查 ----
-function Get-RelayProcess($State) {
+function Get-CleanerProcess($State) {
     $processId = 0
     $ticks = 0L
     if (-not [int]::TryParse([string]$State.processId, [ref]$processId) -or $processId -le 0 -or
@@ -32,7 +32,7 @@ function Get-RelayProcess($State) {
     return $null
 }
 
-function Test-RelayHealth([int]$Port, [int]$ProcessId, [int]$Timeout = 500) {
+function Test-CleanerHealth([int]$Port, [int]$ProcessId, [int]$Timeout = 500) {
     $response = $null
     $reader = $null
     try {
@@ -43,7 +43,7 @@ function Test-RelayHealth([int]$Port, [int]$ProcessId, [int]$Timeout = 500) {
         $response = $request.GetResponse()
         $reader = [IO.StreamReader]::new($response.GetResponseStream(), [Text.Encoding]::UTF8)
         $health = $reader.ReadToEnd() | ConvertFrom-Json
-        return ($health.service -eq 'relay-sanitizer' -and $health.pid -eq $ProcessId)
+        return ($health.service -eq 'codex-context-cleaner' -and $health.pid -eq $ProcessId)
     } catch { return $false } finally {
         if ($reader) { $reader.Dispose() }
         if ($response) { $response.Dispose() }

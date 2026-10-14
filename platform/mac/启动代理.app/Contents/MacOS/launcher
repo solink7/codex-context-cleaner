@@ -1,12 +1,12 @@
 #!/bin/zsh
-# [INPUT]: runtime.sh、status-ui.sh、固定清单与系统 JXA/Cocoa 状态窗口。
+# [INPUT]: runtime.sh、legacy.sh、status-ui.sh、固定清单与 JXA 状态窗口。
 # [OUTPUT]: 检查或安装 Python，核验健康后在同一窗口显示结果。
 # [POS]: Mac 启动编排；串行化启停，避开 launchd 的桌面访问限制。
 # [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 ROOT="${0:A:h:h:h:h}"
 APP_CONTENTS="${0:A:h:h}"
-SERVICE="$HOME/Library/Application Support/Relay-Sanitizer"
-LABEL=local.relay-sanitizer
+SERVICE="$HOME/Library/Application Support/codex-context-cleaner"
+LABEL=local.codex-context-cleaner
 umask 077
 source "$APP_CONTENTS/MacOS/status-ui.sh" || exit 1
 mkdir -p "$SERVICE" || { notice '无法创建后台运行目录。' error; exit 1; }
@@ -25,6 +25,8 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 1' HUP INT TERM
 ui_begin '正在检查本机运行环境…' || { notice '无法创建启动状态文件。' error; exit 1; }
+source "$APP_CONTENTS/MacOS/legacy.sh" || { notice '启动文件不完整，请重新解压工具。' error; exit 1; }
+require_previous_service_stopped || exit 1
 source "$APP_CONTENTS/MacOS/runtime.sh" || { notice '启动文件不完整，请重新解压整个工具文件夹。' error; exit 1; }
 MAC_VERSION=$(/usr/bin/sw_vers -productVersion)
 if (( ${MAC_VERSION%%.*} < 11 )); then
@@ -60,7 +62,7 @@ import json,sys,urllib.request
 try:
  opener=urllib.request.build_opener(urllib.request.ProxyHandler({}))
  with opener.open('http://127.0.0.1:'+sys.argv[1]+'/health', timeout=.5) as r: d=json.load(r)
- sys.exit(not (d.get('service')=='relay-sanitizer' and d.get('pid')==int(sys.argv[2])))
+ sys.exit(not (d.get('service')=='codex-context-cleaner' and d.get('pid')==int(sys.argv[2])))
 except Exception: sys.exit(1)
 CHECK
 }

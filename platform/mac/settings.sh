@@ -15,7 +15,7 @@ else
  RESOURCES="$ROOT"
  RUNTIME="$ROOT/platform/mac/runtime.sh"
 fi
-SERVICE="$HOME/Library/Application Support/Relay-Sanitizer"
+SERVICE="$HOME/Library/Application Support/codex-context-cleaner"
 umask 077
 mkdir -p "$SERVICE" || exit 1
 source "$APP_CONTENTS/MacOS/status-ui.sh" || exit 1
@@ -37,7 +37,7 @@ case $(/usr/bin/uname -m) in
 esac
 PYTHON_CANDIDATES=(/opt/homebrew/bin/python3 /usr/local/bin/python3 /Library/Frameworks/Python.framework/Versions/Current/bin/python3)
 if /usr/bin/xcode-select -p >/dev/null 2>&1; then PYTHON_CANDIDATES+=(/usr/bin/python3); fi
-RUNTIME_ROOT="$HOME/Library/Application Support/Relay-Sanitizer"
+RUNTIME_ROOT="$HOME/Library/Application Support/codex-context-cleaner"
 export SSL_CERT_FILE=/etc/ssl/cert.pem
 if ! ensure_python "$RESOURCES/runtime-manifest.tsv" "$RUNTIME_ROOT" "$PLATFORM" "${PYTHON_CANDIDATES[@]}"; then
  notice "$RUNTIME_ERROR" error
@@ -45,7 +45,7 @@ if ! ensure_python "$RESOURCES/runtime-manifest.tsv" "$RUNTIME_ROOT" "$PLATFORM"
 fi
 # 配置校验由页面保存时完成；此处无需已填写的上游地址。
 BROWSER_ARGS=()
-[[ "${RELAY_HEADLESS:-0}" != 1 ]] || BROWSER_ARGS=(--no-browser)
+[[ "${CODEX_CONTEXT_CLEANER_HEADLESS:-0}" != 1 ]] || BROWSER_ARGS=(--no-browser)
 /usr/bin/nohup "$PYTHON_BIN" -I -X utf8 "$RESOURCES/settings.py" --root "$ROOT" --config "$RESOURCES/config.json" "${BROWSER_ARGS[@]}" \
  >"$RUNTIME_ROOT/settings.log" 2>&1 </dev/null &
 READY=0

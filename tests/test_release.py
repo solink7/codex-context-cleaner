@@ -17,7 +17,7 @@ from tools import release
 
 class ReleaseTests(unittest.TestCase):
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory(prefix='relay 发布测试 ')
+        self.temp = tempfile.TemporaryDirectory(prefix='cleaner 发布测试 ')
         self.addCleanup(self.temp.cleanup)
         self.root = (Path(self.temp.name) / 'source').resolve()
         self.root.mkdir()
@@ -39,7 +39,7 @@ class ReleaseTests(unittest.TestCase):
         self.assertEqual(mac.name, 'codex-context-cleaner-macOS.zip')
         self.assertEqual(windows.name, 'codex-context-cleaner-Windows.zip')
         self.assertEqual(mac.parent, self.root / 'dist')
-        self.assertFalse((self.root.parent / 'Relay-Sanitizer-Windows').exists())
+        self.assertEqual({path.name for path in self.root.parent.iterdir()}, {'source'})
         self.assertFalse(list(mac.parent.glob('.build-*')))
         with zipfile.ZipFile(windows) as package:
             names = set(package.namelist())
@@ -91,11 +91,13 @@ class ReleaseTests(unittest.TestCase):
         (self.root / 'config.json').unlink()
         generated = (
             'platform/mac/启动代理.app/Contents/MacOS/runtime.sh',
+            'platform/mac/启动代理.app/Contents/MacOS/legacy.sh',
             'platform/mac/启动代理.app/Contents/Resources/config.json',
             'platform/mac/启动代理.app/Contents/Resources/sanitizer.py',
             'platform/mac/启动代理.app/Contents/Resources/runtime-manifest.tsv',
             'platform/mac/停止代理.app/Contents/MacOS/progress.js',
             'platform/mac/停止代理.app/Contents/MacOS/status-ui.sh',
+            'platform/mac/停止代理.app/Contents/MacOS/legacy.sh',
         )
         for name in generated:
             (self.root / name).unlink(missing_ok=True)

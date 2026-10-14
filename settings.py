@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-[INPUT]: control.ServiceController、本机 UI 资源与系统浏览器。
+[INPUT]: control.ServiceController、本机 UI 资源、TCP 监听与系统浏览器。
 [OUTPUT]: 独立回环端口的设置页、认证后的配置与启停接口。
-[POS]: 本机设置入口；代理未启动时仍可运行，不改变客户端认证。
+[POS]: 本机设置入口；不依赖 DNS，监听就绪后原子发布会话记录。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 """
 import argparse
@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 import secrets
 import signal
+from socketserver import TCPServer
 import subprocess
 import sys
 import threading
@@ -30,6 +31,11 @@ MAX_SETTINGS_BODY = 16 * 1024
 
 class SettingsServer(ThreadingHTTPServer):
     daemon_threads = True
+
+    def server_bind(self):
+        # 已固定回环地址；避免 DNS 反查拖慢离线启动和 CI 就绪检查。
+        TCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address
 
     def __init__(self, controller, assets=ASSETS):
         super().__init__(('127.0.0.1', 0), SettingsHandler)
@@ -87,11 +93,11 @@ class SettingsHandler(BaseHTTPRequestHandler):
         path = urlsplit(self.path).path
         if path == '/api/session':
             if self.allowed(authenticated=True):
-                self.respond(200, {'service': 'cleaner-settings', 'pid': os.getpid()})
+                self.respond(200, {'service': 'codex-context-cleaner.settings', 'pid': os.getpid()})
             return
         if path == '/api/state':
             if self.allowed(authenticated=True):
-                self.respond(200, {**self.server.controller.snapshot(), 'service': 'cleaner-settings', 'pid': os.getpid()})
+                self.respond(200, {**self.server.controller.snapshot(), 'service': 'codex-context-cleaner.settings', 'pid': os.getpid()})
             return
         files = {'/': ('index.html', 'text/html; charset=utf-8'),
                  '/settings.css': ('settings.css', 'text/css; charset=utf-8'),
@@ -161,7 +167,7 @@ def reopen_existing(path, open_browser=True):
             connection.request('GET', '/api/session', headers={'X-Settings-Token': url.fragment})
             response = connection.getresponse()
             actual = json.loads(response.read(65536))
-            if response.status != 200 or actual.get('service') != 'cleaner-settings' or actual.get('pid') != state['pid']:
+            if response.status != 200 or actual.get('service') != 'codex-context-cleaner.settings' or actual.get('pid') != state['pid']:
                 return False
         finally:
             connection.close()
@@ -178,7 +184,7 @@ def main():
     parser.add_argument('--config', type=Path)
     parser.add_argument('--state-dir', type=Path)
     parser.add_argument('--service-dir', type=Path)
-    parser.add_argument('--service-label', default='local.relay-sanitizer')
+    parser.add_argument('--service-label', default='local.codex-context-cleaner')
     parser.add_argument('--no-browser', action='store_true')
     parser.add_argument('--check-running', action='store_true')
     args = parser.parse_args()
@@ -198,11 +204,13 @@ def main():
     server = None
     try:
         server = SettingsServer(controller)
-        state_file.write_text(json.dumps({'url': server.url, 'pid': os.getpid()}), encoding='utf-8')
-        state_file.chmod(0o600)
         # 先开始监听，再交给浏览器；关闭浏览器不会停止代理。
         worker = threading.Thread(target=server.serve_forever, daemon=True)
         worker.start()
+        staging = state_file.with_suffix('.tmp')
+        staging.write_text(json.dumps({'url': server.url, 'pid': os.getpid()}), encoding='utf-8')
+        staging.chmod(0o600)
+        staging.replace(state_file)
         if not args.no_browser:
             webbrowser.open(server.url)
         print('设置页面：' + server.url, flush=True)
