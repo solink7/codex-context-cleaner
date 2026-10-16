@@ -1,5 +1,5 @@
 # codex-context-cleaner - Codex 本机会话上下文清洗工具
-Python 3.11+ 标准库 + HTML/CSS/JavaScript + macOS launchd/JXA + Windows PowerShell 5.1+ + GitHub Actions
+Python 3.9+ 标准库 + HTML/CSS/JavaScript + macOS launchd/JXA + Windows PowerShell 5.1+ + GitHub Actions
 
 ## 目录
 platform/: Mac 与 Windows 的环境安装、启动、停止适配。
@@ -47,6 +47,15 @@ Mac 停止入口兼容前代服务，只停止注册标签对应的进程。
 旧标识只用于 legacy.sh、升级回归和 smoke.py 的隔离替换。
 升级保留旧目录；先停止代理，再填写新版本配置。
 安装前校验 SHA-256，不改系统 PATH，不设置开机自启。
+Mac 环境发现由 runtime.sh 统一提供，启动与设置复用。
+Mac 先检查常见安装与系统入口，首个可用环境即结束探测。
+备用目录按需读取；同一可执行文件的别名只探测一次。
+单个 Python 探测最多等待 5 秒，启动与设置共用安装锁。
+备用路径来自 PATH、Conda 环境记录与 uv 用户目录。
+环境检查接受 Python 3.9+；启动日志记录选中路径。
+双端下载先验证连接；下载显示速度和预计剩余时间。
+下载无数据约 20 秒时退出，总时限为 30 分钟。
+取消 Mac 下载会回收下载进程；磁盘写入错误单独报告。
 Mac 单窗口显示进度与结果；Windows 在原命令窗口显示结果。
 CODEX_CONTEXT_CLEANER_HEADLESS=1 供设置控制和验收调用，关闭 Mac 状态窗口。
 GUI 生命周期测试只在本地桌面运行，CI 验证实际后台服务链路。

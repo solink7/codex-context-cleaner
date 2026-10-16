@@ -1,5 +1,5 @@
-﻿# [INPUT]: 固定下载清单、Python 与 .NET 网络、ZIP、SHA-256 能力。
-# [OUTPUT]: 可用的 Python 路径；缺少环境时安装当前用户专用运行环境。
+﻿# [INPUT]: 固定下载清单、Python 3.9+ 与 .NET 网络、ZIP、SHA-256 能力。
+# [OUTPUT]: 去重探测后的 Python；下载估时、写入诊断与互斥安装。
 # [POS]: Windows 环境引导层；无管理员权限依赖，不修改 PATH 或系统 Python。
 # [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 
@@ -10,7 +10,7 @@ function Test-CleanerPython([string]$Executable, [string]$Prefix = '') {
     try {
         $info = [Diagnostics.ProcessStartInfo]::new()
         $info.FileName = $Executable
-        $code = 'import sys, ssl, http.client, urllib.request, json, pathlib; ssl.create_default_context(); sys.exit(1) if sys.version_info < (3,11) else print(sys.executable)'
+        $code = 'import sys, ssl, http.client, urllib.request, json, pathlib; ssl.create_default_context(); sys.exit(1) if sys.version_info < (3,9) else print(sys.executable)'
         $info.Arguments = $Prefix + '-I -X utf8 -c "' + $code + '"'
         $info.UseShellExecute = $false
         $info.CreateNoWindow = $true
@@ -34,13 +34,16 @@ function Test-CleanerPython([string]$Executable, [string]$Prefix = '') {
 function Find-CleanerPython([string]$PrivateExecutable) {
     $found = Test-CleanerPython $PrivateExecutable
     if ($found) { return $found }
+    $checked = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
     foreach ($name in @('py.exe', 'python.exe', 'python3.exe')) {
-        $command = Get-Command $name -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
-        if (-not $command -or $command.Source -like '*\Microsoft\WindowsApps\*') { continue }
-        $prefix = ''
-        if ($name -eq 'py.exe') { $prefix = '-3 ' }
-        $found = Test-CleanerPython $command.Source $prefix
-        if ($found) { return $found }
+        foreach ($command in @(Get-Command $name -All -CommandType Application -ErrorAction SilentlyContinue)) {
+            if ($command.Source -like '*\Microsoft\WindowsApps\*') { continue }
+            $prefix = ''
+            if ($name -eq 'py.exe') { $prefix = '-3 ' }
+            if (-not $checked.Add($command.Source + '|' + $prefix)) { continue }
+            $found = Test-CleanerPython $command.Source $prefix
+            if ($found) { return $found }
+        }
     }
     # 官方安装器不一定加入 PATH；按 Python 注册位置继续查找。
     foreach ($registryRoot in @('HKCU:\Software\Python\PythonCore', 'HKLM:\Software\Python\PythonCore', 'HKLM:\Software\WOW6432Node\Python\PythonCore')) {
@@ -48,7 +51,12 @@ function Find-CleanerPython([string]$PrivateExecutable) {
             $key = Get-Item -LiteralPath ($version.PSPath + '\InstallPath') -ErrorAction SilentlyContinue
             if (-not $key) { continue }
             $candidate = $key.GetValue('ExecutablePath')
-            if (-not $candidate) { $candidate = Join-Path $key.GetValue('') 'python.exe' }
+            if (-not $candidate) {
+                $directory = $key.GetValue('')
+                if (-not $directory) { continue }
+                $candidate = Join-Path $directory 'python.exe'
+            }
+            if (-not $checked.Add($candidate + '|')) { continue }
             $found = Test-CleanerPython $candidate
             if ($found) { return $found }
         }
@@ -72,31 +80,74 @@ function Get-CleanerRuntimeEntry([string]$Manifest, [string]$Architecture) {
     return $entries[0]
 }
 
+function Open-CleanerDownloadResponse([string]$Url) {
+    $request = [Net.HttpWebRequest]::Create($Url)
+    $request.Timeout = 15000
+    $request.ReadWriteTimeout = 20000
+    try { return $request.GetResponse() } catch {
+        if ($_.Exception.InnerException -is [Net.WebException] -and $_.Exception.InnerException.Response) {
+            $_.Exception.InnerException.Response.Dispose()
+        }
+        throw
+    }
+}
+
+function Get-CleanerDownloadProgress([long]$Received, [long]$Total, [double]$Elapsed) {
+    $rate = $Received / [Math]::Max(.001, $Elapsed)
+    $percent = -1
+    $remaining = -1
+    $status = '已下载 {0:N1} MB，速度 {1:N0} KB/s' -f ($Received / 1MB), ($rate / 1KB)
+    if ($Total -gt 0) { $percent = [Math]::Min(100, [int](100 * $Received / $Total)) }
+    if ($Total -gt 0 -and $rate -gt 0) {
+        $remaining = [int][Math]::Max(0, ($Total - $Received) / $rate)
+        $status += '，预计还需 {0} 分 {1} 秒' -f [int][Math]::Floor($remaining / 60), ($remaining % 60)
+    } else { $status += '，剩余时间待测速' }
+    return [pscustomobject]@{ status=$status; percent=$percent; remaining=$remaining }
+}
+
 function Save-CleanerRuntime([string]$Url, [string]$Destination) {
     [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
     $response = $null
     $inputStream = $null
     $outputStream = $null
+    $operation = '连接'
     try {
-        $request = [Net.HttpWebRequest]::Create($Url)
-        $request.Timeout = 15000
-        $request.ReadWriteTimeout = 30000
-        $response = $request.GetResponse()
+        Write-Host '正在检查 Python 下载连接，连接检查最多等待 15 秒…'
+        # 收到成功响应后才创建文件；失败立即交回原窗口显示。
+        $response = Open-CleanerDownloadResponse $Url
         $inputStream = $response.GetResponseStream()
+        $operation = '写入'
         $outputStream = [IO.File]::Create($Destination)
         $buffer = New-Object byte[] 65536
         $received = 0L
         $clock = [Diagnostics.Stopwatch]::StartNew()
-        while (($count = $inputStream.Read($buffer, 0, $buffer.Length)) -gt 0) {
-            if ($clock.Elapsed.TotalSeconds -gt 300) { throw '下载时间超过 5 分钟。' }
+        $lastProgress = -1.0
+        Write-Progress -Activity '正在下载 Python 运行环境' -Status '正在等待数据，剩余时间待测速' -PercentComplete 0
+        while ($true) {
+            $operation = '读取'
+            $count = $inputStream.Read($buffer, 0, $buffer.Length)
+            if ($count -eq 0) { break }
+            $operation = '超时'
+            if ($clock.Elapsed.TotalSeconds -gt 1800) { throw '下载时间超过 30 分钟。' }
+            $operation = '写入'
             $outputStream.Write($buffer, 0, $count)
             $received += $count
-            $percent = -1
-            if ($response.ContentLength -gt 0) { $percent = [Math]::Min(100, [int](100 * $received / $response.ContentLength)) }
-            Write-Progress -Activity '正在下载 Python 运行环境' -Status ('已下载 {0:N1} MB，请保持窗口打开。' -f ($received / 1MB)) -PercentComplete $percent
+            # 快速连接也只每秒刷新四次，避免进度渲染拖慢下载。
+            $elapsed = $clock.Elapsed.TotalSeconds
+            if ($elapsed - $lastProgress -ge .25 -or $received -eq $response.ContentLength) {
+                $progress = Get-CleanerDownloadProgress $received $response.ContentLength $elapsed
+                Write-Progress -Activity '正在下载 Python 运行环境' -Status $progress.status -PercentComplete $progress.percent -SecondsRemaining $progress.remaining
+                $lastProgress = $elapsed
+            }
         }
     } catch {
-        throw '运行环境下载失败。请检查网络能否访问 python.org，再双击 start.cmd。'
+        $detail = $_.Exception.Message
+        switch ($operation) {
+            '连接' { throw ('无法连接 Python 下载地址，未开始下载。请检查网络能否访问 python.org。' + $detail) }
+            '写入' { throw ('无法写入 Python 下载文件，请检查磁盘空间和目录权限。' + $detail) }
+            '超时' { throw 'Python 下载超过 30 分钟，请检查网络后重试。' }
+            default { throw ('Python 下载连接中断或连续 20 秒未收到数据，请检查网络。' + $detail) }
+        }
     } finally {
         Write-Progress -Activity '正在下载 Python 运行环境' -Completed
         if ($outputStream) { $outputStream.Dispose() }
@@ -159,7 +210,7 @@ function Get-RequiredCleanerPython([string]$Manifest, [string]$RuntimeRoot) {
     Write-Host '[1/5] 正在检查本机运行环境…'
     $executable = Join-Path $RuntimeRoot 'python\python.exe'
     $found = Find-CleanerPython $executable
-    if ($found) { Write-Host '运行环境已就绪，无需安装。'; return $found }
+    if ($found) { Write-Host ('运行环境已就绪：' + $found); return $found }
     if ([Environment]::OSVersion.Version.Major -lt 10) { throw '自动安装需要 Windows 10 或更新版本。' }
     New-Item -ItemType Directory -Force -Path $RuntimeRoot | Out-Null
     $lock = $null

@@ -1,5 +1,5 @@
 ﻿# [INPUT]: Windows 引导源码、固定清单与临时安装包夹具。
-# [OUTPUT]: 原窗口提示、语法、探测、校验与安装回滚的分支回归结果。
+# [OUTPUT]: 环境短路、下载预检/估时、写入诊断与安装回滚回归。
 # [POS]: 无额外测试依赖的控制层测试；模拟安装不代替 Windows 实机验收。
 # [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 param(
@@ -56,6 +56,32 @@ foreach ($arch in @('AMD64', 'X86', 'ARM64')) {
 }
 Expect-CleanerFailure { Get-CleanerRuntimeEntry $manifest 'UNKNOWN' } '未知架构未被拒绝'
 
+# ---- 估时与首个可用环境停止探测 ----
+$progress = Get-CleanerDownloadProgress 1048576 3145728 2
+Assert-Cleaner ($progress.remaining -eq 4) '下载剩余时间估算不正确'
+Assert-Cleaner ($progress.percent -eq 33) '下载百分比不正确'
+Assert-Cleaner ($progress.status -match '512 KB/s') '下载速度未显示'
+$progress = Get-CleanerDownloadProgress 0 -1 0
+Assert-Cleaner ($progress.remaining -eq -1 -and $progress.status -match '待测速') '未知长度未显示待测速'
+$originalDiscoveryProbe = (Get-Item Function:\Test-CleanerPython).ScriptBlock
+try {
+    $script:discoveryCount = 0
+    function Get-Command {
+        param($Name, [switch]$All, $CommandType, $ErrorAction)
+        return @([pscustomobject]@{Source='bad-python'}, [pscustomobject]@{Source='good-python'})
+    }
+    function Test-CleanerPython([string]$Executable, [string]$Prefix = '') {
+        $script:discoveryCount++
+        if ($Executable -eq 'good-python') { return $Executable }
+        return $null
+    }
+    Assert-Cleaner ((Find-CleanerPython 'private-python') -eq 'good-python') '未继续检查第二个 PATH 入口'
+    Assert-Cleaner ($script:discoveryCount -eq 3) '找到可用环境后仍继续探测'
+} finally {
+    Remove-Item Function:\Get-Command
+    Set-Item Function:\Test-CleanerPython $originalDiscoveryProbe
+}
+
 # ---- 本地 ZIP 夹具与引导分支 ----
 $tempRoot = Join-Path ([IO.Path]::GetTempPath()) ('cleaner 环境测试-' + [Guid]::NewGuid().ToString('N'))
 $runtimeRoot = Join-Path $tempRoot 'runtime'
@@ -65,6 +91,28 @@ $originalProbe = (Get-Item Function:\Test-CleanerPython).ScriptBlock
 try {
     New-Item -ItemType Directory -Path $fixture, $runtimeRoot | Out-Null
     [IO.File]::WriteAllText((Join-Path $fixture 'python.exe'), 'healthy')
+    $originalDownloadResponse = (Get-Item Function:\Open-CleanerDownloadResponse).ScriptBlock
+    try {
+        function Open-CleanerDownloadResponse([string]$Url) { throw '模拟连接失败' }
+        $preflightFile = Join-Path $tempRoot 'preflight.zip'
+        $message = ''
+        try { Save-CleanerRuntime 'https://www.python.org/test' $preflightFile } catch { $message = $_.Exception.Message }
+        Assert-Cleaner ($message -match '未开始下载') '连接失败没有立即说明原因'
+        Assert-Cleaner (-not (Test-Path -LiteralPath $preflightFile)) '连接失败后仍创建下载文件'
+        $script:downloadResponse = [pscustomobject]@{ ContentLength=4; closed=$false }
+        $script:downloadResponse | Add-Member ScriptMethod GetResponseStream { return [IO.MemoryStream]::new([byte[]](100, 97, 116, 97)) }
+        $script:downloadResponse | Add-Member ScriptMethod Dispose { $this.closed=$true }
+        function Open-CleanerDownloadResponse([string]$Url) { return $script:downloadResponse }
+        function Write-Progress { param($Activity, $Status, $PercentComplete, $SecondsRemaining, [switch]$Completed) }
+        try {
+            Save-CleanerRuntime 'https://www.python.org/test' $preflightFile
+            Assert-Cleaner (([IO.File]::ReadAllText($preflightFile)) -eq 'data') '成功下载内容不正确'
+            Assert-Cleaner $script:downloadResponse.closed '下载后未释放响应'
+            $message = ''
+            try { Save-CleanerRuntime 'https://www.python.org/test' (Join-Path $tempRoot 'missing/file.zip') } catch { $message = $_.Exception.Message }
+            Assert-Cleaner ($message -match '磁盘空间和目录权限') '写入失败误报为网络故障'
+        } finally { Remove-Item Function:\Write-Progress }
+    } finally { Set-Item Function:\Open-CleanerDownloadResponse $originalDownloadResponse }
     $hashProbe = Join-Path $tempRoot 'hash.txt'
     [IO.File]::WriteAllBytes($hashProbe, [Text.Encoding]::ASCII.GetBytes('abc'))
     Assert-Cleaner ((Get-CleanerSha256 $hashProbe) -eq 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad') '内置 SHA-256 校验结果不正确'

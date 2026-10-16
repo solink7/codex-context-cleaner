@@ -1,7 +1,7 @@
 #!/bin/zsh
-# [INPUT]: 自身应用资源、security 原路径查询与唯一配置。
+# [INPUT]: 自身资源、runtime.sh 统一环境发现、原路径查询与唯一配置。
 # [OUTPUT]: 安装或复用 Python，核验设置服务并打开浏览器。
-# [POS]: 自包含设置入口；隔离路径只读，配置与启停使用原目录。
+# [POS]: 自包含设置入口；原目录保存配置，终止信号触发下载清理。
 # [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 SCRIPT="${0:A}"
 if [[ "${SCRIPT:t}" == launcher ]]; then
@@ -28,6 +28,7 @@ mkdir -p "$SERVICE" || exit 1
 UI_ACTIVATE="$SERVICE/ui.activate"
 ui_begin '正在准备设置界面…' || exit 1
 trap ui_cleanup EXIT
+trap 'exit 1' HUP INT TERM
 # 系统允许打开后仍会隔离应用；从系统查询原路径，不扫描用户目录。
 if [[ "$SCRIPT" == */AppTranslocation/* ]]; then
  ORIGINAL=$(/usr/bin/security translocate-original-path "${SCRIPT:h:h:h}") || {
@@ -62,11 +63,9 @@ case $(/usr/bin/uname -m) in
  x86_64) PLATFORM=macos-x64 ;;
  *) notice '不支持这台 Mac 的芯片类型。' error; exit 1 ;;
 esac
-PYTHON_CANDIDATES=(/opt/homebrew/bin/python3 /usr/local/bin/python3 /Library/Frameworks/Python.framework/Versions/Current/bin/python3)
-if /usr/bin/xcode-select -p >/dev/null 2>&1; then PYTHON_CANDIDATES+=(/usr/bin/python3); fi
 RUNTIME_ROOT="$HOME/Library/Application Support/codex-context-cleaner"
 export SSL_CERT_FILE=/etc/ssl/cert.pem
-if ! ensure_python "$RESOURCES/runtime-manifest.tsv" "$RUNTIME_ROOT" "$PLATFORM" "${PYTHON_CANDIDATES[@]}"; then
+if ! ensure_python "$RESOURCES/runtime-manifest.tsv" "$RUNTIME_ROOT" "$PLATFORM"; then
  notice "$RUNTIME_ERROR" error
  exit 1
 fi

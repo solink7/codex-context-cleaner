@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-[INPUT]: 当前系统 ZIP、真实设置启动入口与缺环境场景。
-[OUTPUT]: 设置入口、静态页面、鉴权、端口切换与启停验收。
+[INPUT]: 当前系统 ZIP、真实设置入口与禁用外部环境发现的安装场景。
+[OUTPUT]: 覆盖下载时限的设置入口、鉴权、端口切换与启停验收。
 [POS]: CI 发布闸门；使用临时端口、服务标签与目录，不碰用户运行记录。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 """
@@ -87,8 +87,8 @@ def start_settings(package, temporary, environment, label, quarantine=False, boo
         text = text.replace('--root "$ROOT"', '--root "$ROOT" --service-dir "' +
                             str(temporary / 'service') + '" --service-label ' + label)
         if bootstrap:
-            text = re.sub(r'^PYTHON_CANDIDATES=.*$', 'PYTHON_CANDIDATES=()', text, flags=re.M)
-            text = re.sub(r'^if /usr/bin/xcode-select.*$', '', text, flags=re.M)
+            text = text.replace('source "$RUNTIME" || exit 1',
+                                'source "$RUNTIME" || exit 1\npython_candidates() { return 0; }')
         script.write_text(text, encoding='utf-8')
         command = ['/bin/zsh', str(script)]
         state_dir = temporary / 'service'
@@ -107,7 +107,8 @@ def start_settings(package, temporary, environment, label, quarantine=False, boo
         command = ['powershell.exe', '-NoLogo', '-NoProfile', '-NonInteractive',
                    '-ExecutionPolicy', 'Bypass', '-File', str(script)]
         state_dir = package / '.runtime'
-    subprocess.run(command, env=environment, check=True, timeout=60)
+    # 首次安装允许下载 30 分钟；预检、解压和服务就绪另留余量。
+    subprocess.run(command, env=environment, check=True, timeout=1860 if bootstrap else 60)
     if quarantine and '/AppTranslocation/' not in (state_dir / 'settings-launcher.log').read_text(encoding='utf-8'):
         raise AssertionError('未进入真实 Mac 下载隔离路径')
     records = list(state_dir.glob('settings-*.json'))
@@ -145,8 +146,7 @@ def commands(package, temporary, bootstrap):
             text = text.replace('SERVICE="$HOME/Library/Application Support/codex-context-cleaner"',
                                 'SERVICE="' + str(temporary / 'service') + '"')
             if bootstrap and name == '启动代理.app':
-                text = re.sub(r'^PYTHON_CANDIDATES=.*$', 'PYTHON_CANDIDATES=()', text, flags=re.M)
-                text = re.sub(r'^if /usr/bin/xcode-select.*$', '', text, flags=re.M)
+                text = text.replace('MAC_VERSION=$(', 'python_candidates() { return 0; }\nMAC_VERSION=$(')
             script.write_text(text, encoding='utf-8')
         start = ['/bin/zsh', str(package / '启动代理.app/Contents/MacOS/launcher')]
         stop = ['/bin/zsh', str(package / '停止代理.app/Contents/MacOS/launcher')]

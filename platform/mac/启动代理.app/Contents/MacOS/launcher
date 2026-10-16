@@ -1,5 +1,5 @@
 #!/bin/zsh
-# [INPUT]: runtime.sh、legacy.sh、status-ui.sh、固定清单与 JXA 状态窗口。
+# [INPUT]: runtime.sh 的统一环境发现、legacy.sh、状态窗口与清单。
 # [OUTPUT]: 检查或安装 Python，核验健康后在同一窗口显示结果。
 # [POS]: Mac 启动编排；串行化启停，避开 launchd 的桌面访问限制。
 # [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
@@ -38,11 +38,8 @@ case $(/usr/bin/uname -m) in
  x86_64) PLATFORM=macos-x64 ;;
  *) notice '不支持这台 Mac 的芯片类型。' error; exit 1 ;;
 esac
-PYTHON_CANDIDATES=(/opt/homebrew/bin/python3 /usr/local/bin/python3 /Library/Frameworks/Python.framework/Versions/Current/bin/python3)
-# 系统 Python 可是开发工具占位入口；未装开发工具时不触发安装提示。
-if /usr/bin/xcode-select -p >/dev/null 2>&1; then PYTHON_CANDIDATES+=(/usr/bin/python3); fi
 export SSL_CERT_FILE=/etc/ssl/cert.pem
-if ! ensure_python "$APP_CONTENTS/Resources/runtime-manifest.tsv" "$SERVICE" "$PLATFORM" "${PYTHON_CANDIDATES[@]}"; then
+if ! ensure_python "$APP_CONTENTS/Resources/runtime-manifest.tsv" "$SERVICE" "$PLATFORM"; then
  notice "$RUNTIME_ERROR" error
  exit 1
 fi
