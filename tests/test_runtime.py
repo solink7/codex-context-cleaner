@@ -1,6 +1,6 @@
 """
 [INPUT]: platform/mac/runtime.sh、固定清单与临时归档/可执行文件夹具。
-[OUTPUT]: 限时/分阶段探测、下载取消、安装互斥与回滚回归。
+[OUTPUT]: 已有/首次环境探测上限、下载取消、安装互斥与回滚回归。
 [POS]: 启动引导测试；下载用本地夹具替代，真实安装另行验证。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 """
@@ -125,6 +125,12 @@ ensure_python "$MANIFEST" "$RUNTIME_ROOT" macos-arm64''', 'return 77')
         result = self.shell('probe_python ' + shlex.quote(str(executable)))
         self.assertNotEqual(result.returncode, 0)
         self.assertLess(time.monotonic() - began, 6.5)
+
+    def test_new_runtime_first_probe_has_separate_timeout(self):
+        self.make_archive('#!/bin/sh\ncase "$0" in */.install.*/*) sleep 6;; esac\nprintf "%s\\n" "$0"\n')
+        result = self.ensure()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('首次系统检查最多等待 30 秒', result.stdout)
 
     def test_aliases_probe_same_executable_once(self):
         executable = self.root / 'bad-python'
@@ -285,7 +291,7 @@ download_runtime https://github.com/test {shlex.quote(str(self.root / 'download'
         self.make_archive('#!/bin/sh\nexit 1\n')
         result = self.ensure()
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn('未通过检查', result.stdout)
+        self.assertIn('首次验证失败', result.stdout)
         self.assertEqual(old.read_text(), '#!/bin/sh\nexit 1\n')
         self.assertEqual(list(self.destination.glob('.install.*')), [])
 

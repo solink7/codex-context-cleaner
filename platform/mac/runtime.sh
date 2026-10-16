@@ -1,24 +1,31 @@
 #!/bin/zsh
 # [INPUT]: 下载清单、PATH/环境索引、curl 与状态显示函数。
-# [OUTPUT]: 限时探测后的 PYTHON_BIN；缺少环境时互斥安装专用 Python。
+# [OUTPUT]: 限时探测后的 PYTHON_BIN；下载环境首次验证后互斥安装。
 # [POS]: Mac 环境引导层；不修改系统 Python、PATH 或客户端配置。
 # [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 
 # ---- 环境探测 ----
 probe_python() {
- local executable="$1" worker='' began=$SECONDS result
+ local executable="$1" limit="${2:-5}" worker='' began=$SECONDS result errors=/dev/null
  [[ -f "$executable" && -x "$executable" ]] || return 1
  zmodload zsh/zselect || return 1
+ [[ "$limit" == 5 ]] || errors=/dev/stderr
  {
-  "$executable" -I -c 'import sys, ssl, http.client, urllib.request, json, pathlib; ssl.create_default_context(); sys.exit(1) if sys.version_info < (3,9) else print(sys.executable)' 2>/dev/null &
+  "$executable" -I -c 'import sys, ssl, http.client, urllib.request, json, pathlib; ssl.create_default_context(); sys.exit(1) if sys.version_info < (3,9) else print(sys.executable)' 2>"$errors" &
   worker=$!
   while kill -0 "$worker" 2>/dev/null; do
-   (( SECONDS - began < 5 )) || return 1
+   if (( SECONDS - began >= limit )); then
+    [[ "$limit" == 5 ]] || print -ru2 -- "新 Python 首次验证超过 ${limit} 秒：$executable"
+    return 1
+   fi
    zselect -t 5
   done
   wait "$worker"
   result=$?
   worker=''
+  if (( result != 0 )) && [[ "$limit" != 5 ]]; then
+   print -ru2 -- "新 Python 首次验证失败，退出码 ${result}：$executable"
+  fi
   return "$result"
  } always {
   if [[ -n "$worker" ]]; then
@@ -171,7 +178,9 @@ install_python() {
   [[ "$actual_digest" == "$RUNTIME_SHA256" ]] || { RUNTIME_ERROR='下载文件校验失败，已取消安装。请检查网络后重新启动。'; return 1; }
   show_progress '校验通过，正在安装专用运行环境…'
   /usr/bin/tar -xzf "$archive" --no-same-owner -C "$stage" || { RUNTIME_ERROR='运行环境解压失败。请检查剩余磁盘空间后重试。'; return 1; }
-  probe_python "$stage/python/bin/python3" >/dev/null || { RUNTIME_ERROR='新运行环境未通过检查。这台 Mac 的系统版本或芯片不受支持。'; return 1; }
+  # 首次执行新下载程序会触发系统检查；已有环境仍用 5 秒上限。
+  show_progress '正在验证新 Python，首次系统检查最多等待 30 秒…'
+  probe_python "$stage/python/bin/python3" 30 >/dev/null || { RUNTIME_ERROR='新运行环境首次验证失败或超过 30 秒，请查看启动日志后重试。'; return 1; }
   if [[ -e "$runtime_root/python" ]]; then
    mv "$runtime_root/python" "$stage/previous-python" || return 1
   fi
@@ -180,7 +189,7 @@ install_python() {
    RUNTIME_ERROR='无法写入运行环境目录，请检查文件权限。'
    return 1
   fi
-  PYTHON_BIN=$(probe_python "$runtime_root/python/bin/python3") || {
+  PYTHON_BIN=$(probe_python "$runtime_root/python/bin/python3" 30) || {
    rm -rf "$runtime_root/python"
    [[ ! -d "$stage/previous-python" ]] || mv "$stage/previous-python" "$runtime_root/python"
    RUNTIME_ERROR='安装后的运行环境未通过检查，已撤回本次安装。'

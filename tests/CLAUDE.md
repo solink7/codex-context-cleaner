@@ -6,7 +6,7 @@ test_sanitizer.py: 本地 HTTP 上游回归。验证清洗、认证、SSE、错�
 test_settings.py: 浏览器失败、配置恢复与鉴权；验证入口不等后台输出关闭。
 test_release.py: 自包含应用、唯一配置、干净检出与 ZIP 链接权限回归。
 test_docs.py: Markdown 与包内 HTML 的中文、代码、链接和转义回归。
-test_runtime.py: Python 3.9、探测超时/去重、下载取消与安装互斥回归。
+test_runtime.py: 已有/首次环境超时、探测去重、下载取消与安装互斥回归。
 test_status_ui.py: 固定 UTF-8 字节传输的文本协议及原生窗口生命周期，验证失败保留与成功关闭；GUI 测试在 CI 跳过。
 windows_runtime.tests.ps1: 环境短路、下载预检/估时、写入错误与安装回滚回归。
 测试只使用模拟凭据与临时目录，不连接真实上游。
